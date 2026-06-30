@@ -1,30 +1,28 @@
 {
-  "name": "pi-extension-template",
-  "version": "0.1.3",
-  "description": "Template for building Pi packages with extensions, Agent Skills, prompts, and themes.",
+  "name": "pi-model-fallback",
+  "version": "0.1.0",
+  "description": "Pi extension that switches to a fallback model after provider failures such as 429 rate limits.",
   "type": "module",
   "license": "MIT",
-  "author": "YOUR_NAME",
+  "author": "Keisu",
   "keywords": [
     "pi-package",
     "pi",
-    "agent-skill",
+    "model-fallback",
+    "fallback",
     "typescript"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/REPO.git"
+    "url": "git+https://github.com/eiei114/pi-model-fallback.git"
   },
   "bugs": {
-    "url": "https://github.com/OWNER/REPO/issues"
+    "url": "https://github.com/eiei114/pi-model-fallback/issues"
   },
-  "homepage": "https://github.com/OWNER/REPO#readme",
+  "homepage": "https://github.com/eiei114/pi-model-fallback#readme",
   "files": [
     "extensions/",
     "lib/",
-    "skills/",
-    "prompts/",
-    "themes/",
     "docs/",
     "README.md",
     "LICENSE",
@@ -39,15 +37,6 @@
   "pi": {
     "extensions": [
       "./extensions"
-    ],
-    "skills": [
-      "./skills"
-    ],
-    "prompts": [
-      "./prompts"
-    ],
-    "themes": [
-      "./themes"
     ]
   },
   "publishConfig": {
