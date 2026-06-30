@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+- Use `agent_start` for persistent preselect; `session_start` was not a Pi extension event.
+- Persist fallback state from assistant error messages on `turn_end`, covering provider SDK errors that do not emit `after_provider_response`.
+
 ## 0.2.0
 
 - Add persistent failover state. A matching provider failure now writes `model-fallback/state.json`, and future sessions preselect the fallback model before the first provider call until the cooldown expires.

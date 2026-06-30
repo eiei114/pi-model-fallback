@@ -89,7 +89,46 @@ export default function modelFallback(pi: ExtensionAPI) {
     ctx.ui.notify(`Model fallback preselected: ${originalModelKey} → ${activeFallbackKey} until ${active.until}.`, "warning");
   }
 
-  pi.on("session_start", async (_event, ctx) => {
+  async function persistFailure(source: ModelRef, status: number, headers: Record<string, string>, ctx: ExtensionContext): Promise<void> {
+    const loaded = config ?? (await loadConfig(ctx));
+    if (!loaded) return;
+    const match = findFallback(loaded, { provider: source.provider, id: source.model }, status);
+    if (!match) return;
+    if (activeFallbackKey && activeFallbackKey === modelRefKey(match.fallback)) return;
+
+    const fallbackModel = ctx.modelRegistry.find(match.fallback.provider, match.fallback.model);
+    if (!fallbackModel) {
+      ctx.ui.notify(`Model fallback missing: ${modelRefKey(match.fallback)}`, "warning");
+      return;
+    }
+
+    const now = new Date();
+    const until = new Date(now.getTime() + cooldownMsFor(match.rule.cooldownMs, status, headers)).toISOString();
+    const loadedState = state ?? (await loadState(ctx)) ?? { version: 1 as const, entries: [] };
+    state = upsertStateEntry(loadedState, {
+      source,
+      fallback: match.fallback,
+      status,
+      until,
+      createdAt: now.toISOString(),
+      ruleName: match.rule.name,
+    });
+    await writeState(paths.state, state);
+
+    const ok = await pi.setModel(fallbackModel);
+    if (!ok) {
+      ctx.ui.notify(`Model fallback auth unavailable: ${modelRefKey(match.fallback)}`, "warning");
+      return;
+    }
+
+    originalModelKey = modelRefKey(source);
+    activeFallbackKey = modelRefKey(match.fallback);
+    lastFallbackReason = `${status} from ${originalModelKey}; persistent until ${until}`;
+    updateStatus(ctx);
+    ctx.ui.notify(`Model fallback: ${originalModelKey} → ${activeFallbackKey} (${status}). Future sessions preselect fallback until ${until}.`, "warning");
+  }
+
+  pi.on("agent_start", async (_event, ctx) => {
     await loadConfig(ctx);
     await loadState(ctx);
     await applyPersistentFallback(ctx);
@@ -112,39 +151,21 @@ export default function modelFallback(pi: ExtensionAPI) {
     if (event.status >= 200 && event.status < 300) return;
     if (activeFallbackKey && modelKey(current) === activeFallbackKey) return;
 
-    const match = findFallback(loaded, current, event.status);
-    if (!match) return;
+    await persistFailure(modelToRef(current), event.status, event.headers, ctx);
+  });
 
-    const fallbackModel = ctx.modelRegistry.find(match.fallback.provider, match.fallback.model);
-    if (!fallbackModel) {
-      ctx.ui.notify(`Model fallback missing: ${modelRefKey(match.fallback)}`, "warning");
-      return;
-    }
-
-    const ok = await pi.setModel(fallbackModel);
-    if (!ok) {
-      ctx.ui.notify(`Model fallback auth unavailable: ${modelRefKey(match.fallback)}`, "warning");
-      return;
-    }
-
-    const now = new Date();
-    const until = new Date(now.getTime() + cooldownMsFor(match.rule.cooldownMs, event.status, event.headers)).toISOString();
-    const loadedState = state ?? (await loadState(ctx)) ?? { version: 1 as const, entries: [] };
-    state = upsertStateEntry(loadedState, {
-      source: modelToRef(current),
-      fallback: match.fallback,
-      status: event.status,
-      until,
-      createdAt: now.toISOString(),
-      ruleName: match.rule.name,
-    });
-    await writeState(paths.state, state);
-
-    originalModelKey = modelKey(current);
-    activeFallbackKey = modelRefKey(match.fallback);
-    lastFallbackReason = `${event.status} from ${originalModelKey}; persistent until ${until}`;
-    updateStatus(ctx);
-    ctx.ui.notify(`Model fallback: ${originalModelKey} → ${activeFallbackKey} (${event.status}). Future sessions preselect fallback until ${until}.`, "warning");
+  pi.on("turn_end", async (event, ctx) => {
+    const message = event.message as unknown;
+    if (!isRecord(message) || message.role !== "assistant") return;
+    const errorMessage = typeof message.errorMessage === "string" ? message.errorMessage : undefined;
+    if (!errorMessage) return;
+    const status = parseStatusFromErrorMessage(errorMessage);
+    if (status === undefined) return;
+    const provider = typeof message.provider === "string" ? message.provider : ctx.model?.provider;
+    const model = typeof message.model === "string" ? message.model : ctx.model?.id;
+    if (!provider || !model) return;
+    if (activeFallbackKey && `${provider}/${model}` === activeFallbackKey) return;
+    await persistFailure({ provider, model }, status, {}, ctx);
   });
 
   pi.registerCommand("model-fallback:status", {
@@ -334,6 +355,13 @@ function parseResetHeader(value: string | undefined): number | undefined {
   const dateMs = Date.parse(trimmed);
   if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();
   return undefined;
+}
+
+function parseStatusFromErrorMessage(message: string): number | undefined {
+  const match = message.match(/\b([1-5][0-9]{2})\b/);
+  if (!match) return undefined;
+  const status = Number(match[1]);
+  return Number.isInteger(status) ? status : undefined;
 }
 
 function modelToRef(model: { provider: string; id: string }): ModelRef {
