@@ -13,6 +13,8 @@ export interface FallbackRule {
   matchProviders?: string[];
   matchModels?: ModelRef[];
   statuses?: number[];
+  /** Persistent failover cooldown in milliseconds after a matching failure. Defaults: 429 => 72h, 5xx => 10m. */
+  cooldownMs?: number;
   fallback: ModelRef;
 }
 
@@ -81,6 +83,7 @@ function validateRule(value: unknown, index: number): FallbackRule {
   if (value.matchProviders !== undefined) rule.matchProviders = readStringArray(value.matchProviders, `rules[${index}].matchProviders`);
   if (value.matchModels !== undefined) rule.matchModels = readModelRefArray(value.matchModels, `rules[${index}].matchModels`);
   if (value.statuses !== undefined) rule.statuses = readStatuses(value.statuses, `rules[${index}].statuses`);
+  if (value.cooldownMs !== undefined) rule.cooldownMs = readPositiveInteger(value.cooldownMs, `rules[${index}].cooldownMs`);
   if ((!rule.matchProviders || rule.matchProviders.length === 0) && (!rule.matchModels || rule.matchModels.length === 0)) {
     throw new Error(`rules[${index}] must define matchProviders or matchModels.`);
   }
@@ -124,6 +127,11 @@ function readStatuses(value: unknown, path: string): number[] {
     if (!Number.isInteger(entry) || entry < 100 || entry > 599) throw new Error(`${path}[${index}] must be an HTTP status code.`);
     return entry;
   });
+}
+
+function readPositiveInteger(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) throw new Error(`${path} must be a positive integer.`);
+  return value;
 }
 
 function readNonEmptyString(value: unknown, path: string): string {

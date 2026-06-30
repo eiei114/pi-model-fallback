@@ -3,15 +3,27 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { defaultConfig, findFallback, modelKey, modelRefKey, validateConfigShape, type ModelFallbackConfig } from "../lib/config.js";
+import {
+  defaultConfig,
+  findFallback,
+  modelKey,
+  modelRefKey,
+  validateConfigShape,
+  type ModelFallbackConfig,
+  type ModelRef,
+} from "../lib/config.js";
+import { findActiveStateEntry, readState, upsertStateEntry, writeState, type FallbackState } from "../lib/state.js";
 import { modelFallbackPaths, readConfig, writeConfig, type ModelFallbackPaths } from "../lib/storage.js";
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const STATUS_KEY = "model-fallback";
+const DEFAULT_429_COOLDOWN_MS = 72 * 60 * 60 * 1000;
+const DEFAULT_5XX_COOLDOWN_MS = 10 * 60 * 1000;
 
 export default function modelFallback(pi: ExtensionAPI) {
   let paths: ModelFallbackPaths = modelFallbackPaths(getAgentDir());
   let config: ModelFallbackConfig | undefined;
+  let state: FallbackState | undefined;
   let originalModelKey: string | undefined;
   let activeFallbackKey: string | undefined;
   let lastFallbackReason: string | undefined;
@@ -31,12 +43,56 @@ export default function modelFallback(pi: ExtensionAPI) {
     }
   }
 
+  async function loadState(ctx: ExtensionContext): Promise<FallbackState | undefined> {
+    try {
+      syncPaths(ctx);
+      state = await readState(paths.state);
+      await writeState(paths.state, state);
+      return state;
+    } catch (error) {
+      ctx.ui.notify(`Model fallback state error: ${errorMessage(error)}`, "warning");
+      return undefined;
+    }
+  }
+
   function updateStatus(ctx: ExtensionContext): void {
     ctx.ui.setStatus(STATUS_KEY, activeFallbackKey ? `fallback:${activeFallbackKey}` : undefined);
   }
 
+  async function applyPersistentFallback(ctx: ExtensionContext): Promise<void> {
+    const current = ctx.model;
+    if (!current) return;
+    const loadedConfig = config ?? (await loadConfig(ctx));
+    if (!loadedConfig?.enabled) return;
+    const loadedState = state ?? (await loadState(ctx));
+    if (!loadedState) return;
+
+    const active = findActiveStateEntry(loadedState, modelToRef(current));
+    if (!active) return;
+
+    const fallbackModel = ctx.modelRegistry.find(active.fallback.provider, active.fallback.model);
+    if (!fallbackModel) {
+      ctx.ui.notify(`Model fallback state target missing: ${modelRefKey(active.fallback)}`, "warning");
+      return;
+    }
+
+    const ok = await pi.setModel(fallbackModel);
+    if (!ok) {
+      ctx.ui.notify(`Model fallback auth unavailable: ${modelRefKey(active.fallback)}`, "warning");
+      return;
+    }
+
+    originalModelKey = modelKey(current);
+    activeFallbackKey = modelRefKey(active.fallback);
+    lastFallbackReason = `persistent ${active.status} from ${originalModelKey} until ${active.until}`;
+    updateStatus(ctx);
+    ctx.ui.notify(`Model fallback preselected: ${originalModelKey} → ${activeFallbackKey} until ${active.until}.`, "warning");
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     await loadConfig(ctx);
+    await loadState(ctx);
+    await applyPersistentFallback(ctx);
     updateStatus(ctx);
   });
 
@@ -71,26 +127,46 @@ export default function modelFallback(pi: ExtensionAPI) {
       return;
     }
 
+    const now = new Date();
+    const until = new Date(now.getTime() + cooldownMsFor(match.rule.cooldownMs, event.status, event.headers)).toISOString();
+    const loadedState = state ?? (await loadState(ctx)) ?? { version: 1 as const, entries: [] };
+    state = upsertStateEntry(loadedState, {
+      source: modelToRef(current),
+      fallback: match.fallback,
+      status: event.status,
+      until,
+      createdAt: now.toISOString(),
+      ruleName: match.rule.name,
+    });
+    await writeState(paths.state, state);
+
     originalModelKey = modelKey(current);
     activeFallbackKey = modelRefKey(match.fallback);
-    lastFallbackReason = `${event.status} from ${originalModelKey}`;
+    lastFallbackReason = `${event.status} from ${originalModelKey}; persistent until ${until}`;
     updateStatus(ctx);
-    ctx.ui.notify(`Model fallback: ${originalModelKey} → ${activeFallbackKey} (${event.status}). Re-run the prompt to use fallback.`, "warning");
+    ctx.ui.notify(`Model fallback: ${originalModelKey} → ${activeFallbackKey} (${event.status}). Future sessions preselect fallback until ${until}.`, "warning");
   });
 
   pi.registerCommand("model-fallback:status", {
     description: "Show model fallback status",
     handler: async (_args, ctx) => {
       const loaded = config ?? (await loadConfig(ctx)) ?? defaultConfig();
-      ctx.ui.notify(formatStatus(loaded, paths.config, activeFallbackKey, originalModelKey, lastFallbackReason), "info");
+      const loadedState = state ?? (await loadState(ctx)) ?? { version: 1 as const, entries: [] };
+      ctx.ui.notify(formatStatus(loaded, loadedState, paths.config, paths.state, activeFallbackKey, originalModelKey, lastFallbackReason), "info");
     },
   });
 
   pi.registerCommand("model-fallback:reset", {
-    description: "Return from fallback model to the pre-fallback model when remembered",
+    description: "Return from fallback model to the pre-fallback model when remembered and clear persistent state",
     handler: async (_args, ctx) => {
+      syncPaths(ctx);
+      state = { version: 1, entries: [] };
+      await writeState(paths.state, state);
       if (!originalModelKey) {
-        ctx.ui.notify("Model fallback: no remembered original model.", "info");
+        ctx.ui.notify("Model fallback: persistent state cleared; no remembered original model.", "info");
+        activeFallbackKey = undefined;
+        lastFallbackReason = undefined;
+        updateStatus(ctx);
         return;
       }
       const [provider, ...modelParts] = originalModelKey.split("/");
@@ -108,7 +184,7 @@ export default function modelFallback(pi: ExtensionAPI) {
       originalModelKey = undefined;
       lastFallbackReason = undefined;
       updateStatus(ctx);
-      ctx.ui.notify(`Model fallback reset: ${modelKey(model)}`, "info");
+      ctx.ui.notify(`Model fallback reset: ${modelKey(model)}; persistent state cleared.`, "info");
     },
   });
 
@@ -129,7 +205,15 @@ export default function modelFallback(pi: ExtensionAPI) {
       syncPaths(ctx);
       if (params.action === "read" || params.action === "status") {
         const current = await readConfig(paths.config);
-        return textResult(JSON.stringify(current, null, 2), { configPath: paths.config, activeFallbackKey, originalModelKey, lastFallbackReason });
+        const currentState = await readState(paths.state);
+        return textResult(JSON.stringify(current, null, 2), {
+          configPath: paths.config,
+          statePath: paths.state,
+          state: currentState,
+          activeFallbackKey,
+          originalModelKey,
+          lastFallbackReason,
+        });
       }
       if (!params.configJson) throw new Error("configJson is required for validate/save.");
       const nextConfig = validateConfigShape(JSON.parse(params.configJson));
@@ -174,11 +258,22 @@ function validateRegisteredModels(ctx: ExtensionContext, nextConfig: ModelFallba
   }
 }
 
-function formatStatus(config: ModelFallbackConfig, configPath: string, activeFallbackKey?: string, originalModelKey?: string, reason?: string): string {
+function formatStatus(
+  config: ModelFallbackConfig,
+  state: FallbackState,
+  configPath: string,
+  statePath: string,
+  activeFallbackKey?: string,
+  originalModelKey?: string,
+  reason?: string,
+): string {
   return [
     `Model fallback: ${config.enabled ? "enabled" : "disabled"}`,
     `Config: ${configPath}`,
+    `State: ${statePath}`,
     `Rules: ${config.rules.length}`,
+    `Persistent entries: ${state.entries.length}`,
+    ...state.entries.map((entry) => `- ${modelRefKey(entry.source)} -> ${modelRefKey(entry.fallback)} until ${entry.until} (${entry.status})`),
     `Active fallback: ${activeFallbackKey ?? "none"}`,
     `Original model: ${originalModelKey ?? "none"}`,
     `Reason: ${reason ?? "none"}`,
@@ -194,6 +289,55 @@ function summarizeConfig(config: ModelFallbackConfig): string {
 
 function textResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text" as const, text }], details: details ?? {} };
+}
+
+function cooldownMsFor(ruleCooldownMs: number | undefined, status: number, headers: Record<string, string>): number {
+  const headerMs = cooldownMsFromHeaders(headers);
+  if (headerMs !== undefined) return headerMs;
+  if (ruleCooldownMs !== undefined) return ruleCooldownMs;
+  if (status === 429) return DEFAULT_429_COOLDOWN_MS;
+  if (status >= 500 && status <= 599) return DEFAULT_5XX_COOLDOWN_MS;
+  return DEFAULT_5XX_COOLDOWN_MS;
+}
+
+function cooldownMsFromHeaders(headers: Record<string, string>): number | undefined {
+  const normalized = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
+  const retryAfter = parseRetryAfter(normalized["retry-after"]);
+  if (retryAfter !== undefined) return retryAfter;
+
+  for (const name of ["x-ratelimit-reset", "x-ratelimit-reset-requests", "x-ratelimit-reset-tokens", "ratelimit-reset", "x-rate-limit-reset"]) {
+    const parsed = parseResetHeader(normalized[name]);
+    if (parsed !== undefined) return parsed;
+  }
+  return undefined;
+}
+
+function parseRetryAfter(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000);
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();
+  return undefined;
+}
+
+function parseResetHeader(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    if (numeric > 1_000_000_000_000) return Math.max(0, numeric - Date.now());
+    if (numeric > 1_000_000_000) return Math.max(0, numeric * 1000 - Date.now());
+    return Math.ceil(numeric * 1000);
+  }
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();
+  return undefined;
+}
+
+function modelToRef(model: { provider: string; id: string }): ModelRef {
+  return { provider: model.provider, model: model.id };
 }
 
 function errorMessage(error: unknown): string {

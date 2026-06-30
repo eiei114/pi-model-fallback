@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Add persistent failover state. A matching provider failure now writes `model-fallback/state.json`, and future sessions preselect the fallback model before the first provider call until the cooldown expires.
+- Parse retry/reset headers when available; otherwise default 429 cooldown to 72h and 5xx cooldown to 10m.
+- `/model-fallback:reset` now clears persistent state.
+
 All notable changes to this project will be documented in this file.
 
 This project follows semantic versioning.

@@ -5,11 +5,12 @@ import { defaultConfig, validateConfigShape, type ModelFallbackConfig } from "./
 export interface ModelFallbackPaths {
   dir: string;
   config: string;
+  state: string;
 }
 
 export function modelFallbackPaths(agentDir: string): ModelFallbackPaths {
   const dir = join(agentDir, "model-fallback");
-  return { dir, config: join(dir, "config.json") };
+  return { dir, config: join(dir, "config.json"), state: join(dir, "state.json") };
 }
 
 export async function readConfig(path: string): Promise<ModelFallbackConfig> {
