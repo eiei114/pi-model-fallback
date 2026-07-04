@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add Buy Me a Coffee sponsor button to README and native GitHub funding link via `.github/FUNDING.yml`.
+
 ## 0.3.0
 
 - Use `agent_start` for persistent preselect; `session_start` was not a Pi extension event.
@@ -47,3 +51,4 @@ This project follows semantic versioning.
 - Initial Pi package template.
 - Example extension, Agent Skill, prompt, and theme.
 - CI and npm Trusted Publishing workflow.
+
