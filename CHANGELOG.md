@@ -4,6 +4,13 @@
 
 - Add Buy Me a Coffee sponsor button to README and native GitHub funding link via `.github/FUNDING.yml`.
 
+## [0.3.2] - 2026-07-04
+
+### Fixed
+
+- Publish only from release refs, print Node/npm versions, and publish with `--provenance --access public` so npm Trusted Publishing uses the same known-good path as `pi-spotify-widget`.
+- Release instructions now use `npm version patch --no-git-tag-version` so local tags do not race the auto-release workflow.
+
 ## 0.3.0
 
 - Use `agent_start` for persistent preselect; `session_start` was not a Pi extension event.

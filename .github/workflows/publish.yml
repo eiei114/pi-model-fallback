@@ -2,12 +2,6 @@ name: Publish to npm
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - package.json
-      - package-lock.json
-      - .github/workflows/publish.yml
     tags:
       - 'v*.*.*'
   release:
@@ -36,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+          ref: ${{ github.event.inputs.ref || github.event.release.tag_name || github.ref }}
           persist-credentials: false
 
       - name: Setup Node.js
@@ -48,6 +42,12 @@ jobs:
 
       - name: Ensure npm supports trusted publishing
         run: npm install -g npm@latest
+
+      - name: Print runtime versions
+        shell: bash
+        run: |
+          node --version
+          npm --version
 
       - name: Install dependencies
         shell: bash
@@ -98,4 +98,17 @@ jobs:
 
       - name: Publish to npm
         if: steps.published.outputs.skip != 'true'
-        run: npm publish --access public
+        shell: bash
+        run: |
+          set +e
+          output=$(npm publish --provenance --access public 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if printf '%s' "$output" | grep -Eq 'E404|404 Not Found'; then
+            echo "::error::npm publish returned 404. Check npm Trusted Publishing for pi-model-fallback and confirm workflow filename publish.yml is registered for this repository."
+          fi
+          exit "$status"

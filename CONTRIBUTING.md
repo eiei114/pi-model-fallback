@@ -30,6 +30,6 @@ Before opening a PR:
 Releases use npm Trusted Publishing. Do not add `NPM_TOKEN` to GitHub Secrets.
 
 ```bash
-npm version patch
-git push --follow-tags
+npm version patch --no-git-tag-version
+git push
 ```
