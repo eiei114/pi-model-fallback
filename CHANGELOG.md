@@ -4,6 +4,12 @@
 
 - Add Buy Me a Coffee sponsor button to README and native GitHub funding link via `.github/FUNDING.yml`.
 
+## [0.3.3] - 2026-07-04
+
+### Changed
+
+- Rewrite the README with real `pi-model-fallback` install, command, configuration, and state-path documentation instead of template placeholders.
+
 ## [0.3.2] - 2026-07-04
 
 ### Fixed
