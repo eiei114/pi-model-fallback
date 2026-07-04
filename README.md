@@ -1,89 +1,110 @@
-# PACKAGE_DISPLAY_NAME
+# pi-model-fallback
 
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
-[![Publish](https://github.com/OWNER/REPO/actions/workflows/publish.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/publish.yml)
-[![npm version](https://img.shields.io/npm/v/PACKAGE_NAME.svg)](https://www.npmjs.com/package/PACKAGE_NAME)
-[![npm downloads](https://img.shields.io/npm/dm/PACKAGE_NAME.svg)](https://www.npmjs.com/package/PACKAGE_NAME)
+[![CI](https://github.com/eiei114/pi-model-fallback/actions/workflows/ci.yml/badge.svg)](https://github.com/eiei114/pi-model-fallback/actions/workflows/ci.yml)
+[![Publish](https://github.com/eiei114/pi-model-fallback/actions/workflows/publish.yml/badge.svg)](https://github.com/eiei114/pi-model-fallback/actions/workflows/publish.yml)
+[![npm version](https://img.shields.io/npm/v/pi-model-fallback.svg)](https://www.npmjs.com/package/pi-model-fallback)
+[![npm downloads](https://img.shields.io/npm/dm/pi-model-fallback.svg)](https://www.npmjs.com/package/pi-model-fallback)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Pi package](https://img.shields.io/badge/pi-package-purple.svg)](https://pi.dev/packages)
-[![Trusted Publishing](https://img.shields.io/badge/npm-Trusted%20Publishing-blue.svg)](docs/release.md)
 <a href="https://buymeacoffee.com/ekawano114m"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="217" height="60"></a>
 
-> One-line pitch for this TypeScript-first Pi package.
+> Pi extension that switches to a fallback model after provider failures such as 429 rate limits.
 
-## What this is
+## What this does
 
-Briefly explain what this TypeScript-first package adds to Pi and who should use it.
+`pi-model-fallback` watches provider failures and automatically moves Pi to a safer fallback model when a matching rule fires.
 
-## Features
+Current default:
 
-- Feature 1
-- Feature 2
-- Feature 3
+- source provider: `zai`
+- matching statuses: `429`, `500`, `502`, `503`, `504`
+- fallback model: `deepseek/deepseek-v4-flash`
+
+When a failure matches, the extension also stores persistent fallback state so future sessions can preselect the fallback model until the cooldown expires.
 
 ## Install
 
-Install the published npm package with Pi:
+Install from npm:
 
 ```bash
-pi install npm:PACKAGE_NAME
+pi install npm:pi-model-fallback
 ```
 
-Replace `PACKAGE_NAME` with the exact `name` from `package.json`.
-For a scoped npm package, keep the `npm:` prefix:
+Install into the current project only:
 
 ```bash
-pi install npm:@your-scope/your-pi-package
-```
-
-Pin a specific version when you want reproducible installs:
-
-```bash
-pi install npm:PACKAGE_NAME@0.1.0
-```
-
-Install into the current project instead of your user Pi settings:
-
-```bash
-pi install npm:PACKAGE_NAME -l
+pi install npm:pi-model-fallback -l
 ```
 
 Or install from GitHub:
 
 ```bash
-pi install git:github.com/OWNER/REPO
+pi install git:github.com/eiei114/pi-model-fallback
 ```
 
 Try it without permanently installing:
 
 ```bash
-pi -e npm:PACKAGE_NAME
+pi -e npm:pi-model-fallback
 ```
 
-## Quick start
+## Commands
 
-Try this package locally:
-
-```bash
-pi -e .
+```text
+/model-fallback:status
+/model-fallback:reset
 ```
 
-Then run:
+- `status`: shows whether fallback is enabled, active persistent entries, and current paths
+- `reset`: clears persistent fallback state and switches back to the remembered original model when possible
 
-```txt
-/your-command
+## Configuration
+
+The extension exposes the `model_fallback_config` tool for reading, validating, and saving config JSON.
+
+Default config shape:
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "rules": [
+    {
+      "name": "zai-to-deepseek-flash",
+      "matchProviders": ["zai"],
+      "statuses": [429, 500, 502, 503, 504],
+      "fallback": {
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      }
+    }
+  ]
+}
 ```
 
-## Package contents
+Rule fields:
 
-| Path | Purpose |
-|---|---|
-| `extensions/` | Pi TypeScript extension entrypoints (`*.ts` and `index.ts`) |
-| `lib/` | Shared TypeScript helpers |
-| `skills/` | Agent Skills |
-| `prompts/` | Prompt templates |
-| `themes/` | Pi themes |
-| `docs/` | Optional supporting docs (usage, examples, release, ADRs) |
+- `matchProviders`: match all models from a provider
+- `matchModels`: match specific `provider` + `model` pairs
+- `statuses`: optional; defaults to `429, 500, 502, 503, 504`
+- `cooldownMs`: optional persistent fallback window
+- `fallback`: target model Pi should switch to
+
+## State and paths
+
+The extension stores:
+
+- config: `model-fallback/config.json`
+- state: `model-fallback/state.json`
+
+If the package is installed project-locally and the current project references it from `.pi/settings.json`, those files live under the project `.pi/` directory. Otherwise they live under the user agent directory.
+
+## Behavior notes
+
+- Successful responses do nothing.
+- Matching failures from `after_provider_response` can trigger fallback immediately.
+- Assistant error messages parsed at `turn_end` can also persist fallback state for SDK/provider failures that do not emit the normal response hook.
+- The failed request is not automatically replayed.
 
 ## Development
 
@@ -92,72 +113,18 @@ npm install
 npm run ci
 ```
 
-## Development flow
-
-Use this default flow when building a new Pi extension OSS project from this template:
-
-1. Create the Vault project notes under `4_Project/<ProjectName>/`.
-2. Add `CONTEXT.md`, `README.md`, `ROADMAP.md`, `Docs/`, `Issues/`, and `Progress/`.
-3. Write the PRD in `4_Project/<ProjectName>/Docs/`.
-4. Split approved tracer-bullet issues into `4_Project/<ProjectName>/Issues/`.
-5. Implement in the OSS repo.
-6. Run `npm run ci`, `npm test`, and `npm pack --dry-run`.
-7. Release with Trusted Publishing.
-8. Save release notes and follow-up decisions back to the Vault project.
-
-Short version:
-
-```txt
-Vault notes -> PRD -> Issues -> implement -> ci/check -> release -> save learnings
-```
-
-## Release
-
-This package is set up for npm Trusted Publishing, so no `NPM_TOKEN` is required.
+Run locally in Pi:
 
 ```bash
-npm version patch
-git push
+pi -e .
 ```
-
-See [`docs/release.md`](docs/release.md) for setup details.
-
-## Docs
-
-`docs/` is optional supporting documentation, not a fixed six-file set. README stays the GitHub/npm entrypoint; add `docs/*.md` only when they help users or maintainers.
-
-After creating a repository from this template:
-
-1. Follow [`docs/template-checklist.md`](docs/template-checklist.md) for setup.
-2. Run the **post-generation docs cleanup** in that checklist: delete or merge template bootstrap docs that no longer add project value.
-
-Useful docs to keep when they add value:
-
-- [`docs/examples.md`](docs/examples.md) — examples for extensions, skills, prompts, and themes
-- [`docs/release.md`](docs/release.md) — Trusted Publishing details (README Release summarizes the flow)
-- `docs/usage.md` — create when usage does not fit in README
-
-Optional maintainer guidance (not a public-user navigation target in mature repos):
-
-- [`docs/template-checklist.md`](docs/template-checklist.md)
-
-Template bootstrap docs to delete or merge after setup unless they still teach something project-specific:
-
-- `docs/github-template.md`
-- `docs/repository-settings.md`
-- `docs/typescript.md`
-
-## Security
-
-Pi packages can execute code with your local permissions. Review extensions before installing third-party packages.
-
-For vulnerability reporting, see [`SECURITY.md`](SECURITY.md).
 
 ## Links
 
-- npm: https://www.npmjs.com/package/PACKAGE_NAME
-- GitHub: https://github.com/OWNER/REPO
-- Issues: https://github.com/OWNER/REPO/issues
+- npm: https://www.npmjs.com/package/pi-model-fallback
+- GitHub: https://github.com/eiei114/pi-model-fallback
+- Issues: https://github.com/eiei114/pi-model-fallback/issues
+- Usage notes: [`docs/usage.md`](docs/usage.md)
 
 ## License
 
