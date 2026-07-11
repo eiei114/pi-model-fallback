@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -12,7 +13,8 @@ import {
   type ModelFallbackConfig,
   type ModelRef,
 } from "../lib/config.js";
-import { findActiveStateEntry, readState, upsertStateEntry, writeState, type FallbackState } from "../lib/state.js";
+import { parseStatusFromErrorMessage } from "../lib/error-status.js";
+import { emptyState, findActiveStateEntry, pruneExpiredState, readState, upsertStateEntry, validateStateShape, writeState, type FallbackState } from "../lib/state.js";
 import { modelFallbackPaths, readConfig, writeConfig, type ModelFallbackPaths } from "../lib/storage.js";
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -22,6 +24,7 @@ const DEFAULT_5XX_COOLDOWN_MS = 10 * 60 * 1000;
 
 export default function modelFallback(pi: ExtensionAPI) {
   let paths: ModelFallbackPaths = modelFallbackPaths(getAgentDir());
+  let pathsResolvedForCwd: string | undefined;
   let config: ModelFallbackConfig | undefined;
   let state: FallbackState | undefined;
   let originalModelKey: string | undefined;
@@ -29,6 +32,8 @@ export default function modelFallback(pi: ExtensionAPI) {
   let lastFallbackReason: string | undefined;
 
   function syncPaths(ctx: ExtensionContext): void {
+    if (pathsResolvedForCwd === ctx.cwd) return;
+    pathsResolvedForCwd = ctx.cwd;
     paths = shouldUseProjectLocalState(ctx) ? modelFallbackPaths(join(ctx.cwd, ".pi")) : modelFallbackPaths(getAgentDir());
   }
 
@@ -46,8 +51,18 @@ export default function modelFallback(pi: ExtensionAPI) {
   async function loadState(ctx: ExtensionContext): Promise<FallbackState | undefined> {
     try {
       syncPaths(ctx);
-      state = await readState(paths.state);
-      await writeState(paths.state, state);
+      const statePath = paths.state;
+      if (!existsSync(statePath)) {
+        state = emptyState();
+        return state;
+      }
+
+      const before = validateStateShape(JSON.parse(await readFile(statePath, "utf8")));
+      const after = pruneExpiredState(before);
+      state = after;
+      if (JSON.stringify(before) !== JSON.stringify(after)) {
+        await writeState(statePath, after);
+      }
       return state;
     } catch (error) {
       ctx.ui.notify(`Model fallback state error: ${errorMessage(error)}`, "warning");
@@ -355,13 +370,6 @@ function parseResetHeader(value: string | undefined): number | undefined {
   const dateMs = Date.parse(trimmed);
   if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();
   return undefined;
-}
-
-function parseStatusFromErrorMessage(message: string): number | undefined {
-  const match = message.match(/\b([1-5][0-9]{2})\b/);
-  if (!match) return undefined;
-  const status = Number(match[1]);
-  return Number.isInteger(status) ? status : undefined;
 }
 
 function modelToRef(model: { provider: string; id: string }): ModelRef {
