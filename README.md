@@ -90,6 +90,15 @@ Rule fields:
 - `cooldownMs`: optional persistent fallback window
 - `fallback`: target model Pi should switch to
 
+### Cooldowns
+
+When a rule does not set `cooldownMs`, the extension uses these defaults:
+
+- `429` → 72 hours
+- `5xx` → 10 minutes
+
+When the provider response includes `Retry-After` or `x-ratelimit-reset*` headers, those values override `cooldownMs` and the defaults for the persisted fallback window.
+
 ## State and paths
 
 The extension stores:
@@ -103,7 +112,7 @@ If the package is installed project-locally and the current project references i
 
 - Successful responses do nothing.
 - Matching failures from `after_provider_response` can trigger fallback immediately.
-- Assistant error messages parsed at `turn_end` can also persist fallback state for SDK/provider failures that do not emit the normal response hook.
+- Assistant error messages parsed at `turn_end` can also persist fallback state for SDK/provider failures that do not emit the normal response hook. Status extraction looks for HTTP-style tokens (for example `status 429`, `HTTP 503`, or `rate limit`) rather than any bare 3-digit number in the message.
 - The failed request is not automatically replayed.
 
 ## Development

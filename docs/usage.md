@@ -15,4 +15,11 @@ Commands:
 /model-fallback:reset
 ```
 
+Cooldown defaults when a rule omits `cooldownMs`:
+
+- `429` → 72 hours
+- `5xx` → 10 minutes
+
+`Retry-After` and `x-ratelimit-reset*` response headers override `cooldownMs` and those defaults.
+
 The failed request is not automatically replayed.
