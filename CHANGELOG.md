@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Declare `@earendil-works/pi-agent-core` as a peerDependency to align with pi-extension-template.
 - Add Buy Me a Coffee sponsor button to README and native GitHub funding link via `.github/FUNDING.yml`.
 
 ## [0.3.3] - 2026-07-04
