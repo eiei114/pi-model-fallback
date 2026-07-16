@@ -1,6 +1,6 @@
 {
   "name": "pi-model-fallback",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Pi extension that switches to a fallback model after provider failures such as 429 rate limits.",
   "type": "module",
   "license": "MIT",
@@ -43,15 +43,17 @@
     "access": "public"
   },
   "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "latest",
-    "@earendil-works/pi-coding-agent": "latest",
-    "@earendil-works/pi-tui": "latest",
+    "@earendil-works/pi-agent-core": "^0.80.6",
+    "@earendil-works/pi-ai": "^0.80.6",
+    "@earendil-works/pi-coding-agent": "^0.80.6",
+    "@earendil-works/pi-tui": "^0.80.6",
     "typebox": "latest",
     "@types/node": "^26.0.0",
     "typescript": "^6.0.3"
