@@ -15,4 +15,4 @@ Commands:
 /model-fallback:reset
 ```
 
-The failed provider response is not automatically replayed in v0.1.0.
+The failed request is not automatically replayed.
