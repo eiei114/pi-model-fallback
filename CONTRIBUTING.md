@@ -29,7 +29,11 @@ Before opening a PR:
 
 Releases use npm Trusted Publishing. Do not add `NPM_TOKEN` to GitHub Secrets.
 
+`npm version patch --no-git-tag-version` updates `package.json` locally without creating a tag. Commit and push that bump so the auto-release workflow on `main` can tag and publish.
+
 ```bash
 npm version patch --no-git-tag-version
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "chore(release): bump pi-model-fallback"
 git push
 ```
