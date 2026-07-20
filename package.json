@@ -1,6 +1,6 @@
 {
   "name": "pi-model-fallback",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Pi extension that switches to a fallback model after provider failures such as 429 rate limits.",
   "type": "module",
   "license": "MIT",
