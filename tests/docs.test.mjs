@@ -14,7 +14,7 @@ test("usage docs avoid stale version-specific replay wording", () => {
 test("contributing release docs commit version bump before push", () => {
   const releaseSection = contributingMd.slice(contributingMd.indexOf("## Release"));
   assert.match(releaseSection, /npm version patch --no-git-tag-version/);
-  assert.match(releaseSection, /git add package\.json package-lock\.json/);
+  assert.match(releaseSection, /git add package\.json package-lock\.json CHANGELOG\.md/);
   assert.match(releaseSection, /git commit/);
   const commitIndex = releaseSection.indexOf("git commit");
   const pushIndex = releaseSection.indexOf("git push");
