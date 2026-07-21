@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Document the missing `git add`/`git commit` steps in `CONTRIBUTING.md` release instructions so maintainers can trigger auto-release after `npm version patch --no-git-tag-version`.
+
 ### Changed
 
 - Bump package version to `0.3.4` for the next patch release.
