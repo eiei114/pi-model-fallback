@@ -13,18 +13,23 @@ test("usage docs avoid stale version-specific replay wording", () => {
 
 test("contributing release docs commit version bump before push", () => {
   const releaseSection = contributingMd.slice(contributingMd.indexOf("## Release"));
-  assert.match(releaseSection, /npm version patch --no-git-tag-version/);
+  const codeBlockMatch = releaseSection.match(/```bash\n([\s\S]*?)```/);
+  assert.ok(codeBlockMatch, "release section should include a bash example");
+  const releaseCommands = codeBlockMatch[1];
+
   assert.match(releaseSection, /Update `CHANGELOG\.md`/);
-  assert.match(releaseSection, /Edit CHANGELOG\.md here/);
+  assert.match(releaseCommands, /npm version patch --no-git-tag-version/);
   assert.match(
-    releaseSection,
+    releaseCommands,
     /git add package\.json package-lock\.json CHANGELOG\.md/,
   );
-  assert.match(releaseSection, /git commit/);
-  const versionIndex = releaseSection.indexOf("npm version");
-  const addIndex = releaseSection.indexOf("git add");
-  const commitIndex = releaseSection.indexOf("git commit");
-  const pushIndex = releaseSection.indexOf("git push");
+  assert.match(releaseCommands, /git commit/);
+  assert.match(releaseCommands, /git push/);
+
+  const versionIndex = releaseCommands.indexOf("npm version");
+  const addIndex = releaseCommands.indexOf("git add");
+  const commitIndex = releaseCommands.indexOf("git commit");
+  const pushIndex = releaseCommands.indexOf("git push");
   assert.ok(
     versionIndex < addIndex &&
       addIndex < commitIndex &&
