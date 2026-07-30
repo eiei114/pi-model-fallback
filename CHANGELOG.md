@@ -5,6 +5,7 @@
 ### Fixed
 
 - Document the missing `git add`/`git commit` steps in `CONTRIBUTING.md` release instructions so maintainers can trigger auto-release after `npm version patch --no-git-tag-version`.
+- Clarify that maintainers should update `CHANGELOG.md` before staging release files.
 
 ### Changed
 
@@ -73,4 +74,3 @@ This project follows semantic versioning.
 - Initial Pi package template.
 - Example extension, Agent Skill, prompt, and theme.
 - CI and npm Trusted Publishing workflow.
-
