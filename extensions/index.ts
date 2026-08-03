@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
+  analyzeRuleWarnings,
   defaultConfig,
   findFallback,
   modelKey,
@@ -12,6 +13,7 @@ import {
   validateConfigShape,
   type ModelFallbackConfig,
   type ModelRef,
+  type RuleWarning,
 } from "../lib/config.js";
 import { parseStatusFromErrorMessage } from "../lib/error-status.js";
 import { emptyState, findActiveStateEntry, pruneExpiredState, readState, upsertStateEntry, validateStateShape, writeState, type FallbackState } from "../lib/state.js";
@@ -188,7 +190,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       const loaded = config ?? (await loadConfig(ctx)) ?? defaultConfig();
       const loadedState = state ?? (await loadState(ctx)) ?? { version: 1 as const, entries: [] };
-      ctx.ui.notify(formatStatus(loaded, loadedState, paths.config, paths.state, activeFallbackKey, originalModelKey, lastFallbackReason), "info");
+      ctx.ui.notify(formatStatus(loaded, loadedState, paths.config, paths.state, analyzeRuleWarnings(loaded), activeFallbackKey, originalModelKey, lastFallbackReason), "info");
     },
   });
 
@@ -242,25 +244,24 @@ export default function modelFallback(pi: ExtensionAPI) {
       if (params.action === "read" || params.action === "status") {
         const current = await readConfig(paths.config);
         const currentState = await readState(paths.state);
-        return textResult(JSON.stringify(current, null, 2), {
-          configPath: paths.config,
-          statePath: paths.state,
-          state: currentState,
-          activeFallbackKey,
-          originalModelKey,
-          lastFallbackReason,
-        });
+        const warnings = analyzeRuleWarnings(current);
+        const details = configToolDetails(paths.config, paths.state, currentState, warnings, activeFallbackKey, originalModelKey, lastFallbackReason);
+        const text = params.action === "status"
+          ? formatStatus(current, currentState, paths.config, paths.state, warnings, activeFallbackKey, originalModelKey, lastFallbackReason)
+          : JSON.stringify(current, null, 2);
+        return textResult(text, details);
       }
       if (!params.configJson) throw new Error("configJson is required for validate/save.");
       const nextConfig = validateConfigShape(JSON.parse(params.configJson));
+      const warnings = analyzeRuleWarnings(nextConfig);
       validateRegisteredModels(ctx, nextConfig);
-      if (params.action === "validate") return textResult("Config is valid.", { config: nextConfig });
-      if (!ctx.hasUI) return textResult("Config not saved: confirmation UI is unavailable.", { configPath: paths.config });
-      const ok = await ctx.ui.confirm("Save model fallback config?", summarizeConfig(nextConfig));
-      if (!ok) return textResult("Config not saved.", { configPath: paths.config });
+      if (params.action === "validate") return textResult(configResultText("Config is valid.", warnings), { config: nextConfig, ...warningDetails(warnings) });
+      if (!ctx.hasUI) return textResult("Config not saved: confirmation UI is unavailable.", { configPath: paths.config, ...warningDetails(warnings) });
+      const ok = await ctx.ui.confirm("Save model fallback config?", summarizeConfig(nextConfig, warnings));
+      if (!ok) return textResult("Config not saved.", { configPath: paths.config, ...warningDetails(warnings) });
       await writeConfig(paths.config, nextConfig);
       config = nextConfig;
-      return textResult("Config saved.", { configPath: paths.config });
+      return textResult(configResultText("Config saved.", warnings), { configPath: paths.config, ...warningDetails(warnings) });
     },
   });
 }
@@ -299,6 +300,7 @@ function formatStatus(
   state: FallbackState,
   configPath: string,
   statePath: string,
+  warnings: RuleWarning[],
   activeFallbackKey?: string,
   originalModelKey?: string,
   reason?: string,
@@ -308,6 +310,7 @@ function formatStatus(
     `Config: ${configPath}`,
     `State: ${statePath}`,
     `Rules: ${config.rules.length}`,
+    `Config warnings: ${warningSummary(warnings)}`,
     `Persistent entries: ${state.entries.length}`,
     ...state.entries.map((entry) => `- ${modelRefKey(entry.source)} -> ${modelRefKey(entry.fallback)} until ${entry.until} (${entry.status})`),
     `Active fallback: ${activeFallbackKey ?? "none"}`,
@@ -316,11 +319,51 @@ function formatStatus(
   ].join("\n");
 }
 
-function summarizeConfig(config: ModelFallbackConfig): string {
+function summarizeConfig(config: ModelFallbackConfig, warnings: RuleWarning[]): string {
   return [
     `enabled: ${config.enabled}`,
     ...config.rules.map((rule) => `${rule.name ?? "rule"}: ${rule.matchProviders?.join(",") ?? "models"} -> ${modelRefKey(rule.fallback)}`),
+    `warnings: ${warningSummary(warnings)}`,
   ].join("\n");
+}
+
+function configToolDetails(
+  configPath: string,
+  statePath: string,
+  state: FallbackState,
+  warnings: RuleWarning[],
+  activeFallbackKey?: string,
+  originalModelKey?: string,
+  lastFallbackReason?: string,
+): Record<string, unknown> {
+  return {
+    configPath,
+    statePath,
+    state,
+    activeFallbackKey,
+    originalModelKey,
+    lastFallbackReason,
+    ...warningDetails(warnings),
+  };
+}
+
+function warningDetails(warnings: RuleWarning[]): Record<string, unknown> {
+  return {
+    warningCount: warnings.length,
+    warningSummary: warningSummary(warnings),
+    warnings,
+  };
+}
+
+function configResultText(prefix: string, warnings: RuleWarning[]): string {
+  if (warnings.length === 0) return prefix;
+  return `${prefix} ${warningSummary(warnings)}`;
+}
+
+function warningSummary(warnings: RuleWarning[]): string {
+  if (warnings.length === 0) return "none";
+  if (warnings.length === 1) return `1 warning: ${warnings[0].message}`;
+  return `${warnings.length} warnings: ${warnings.map((warning) => warning.message).join("; ")}`;
 }
 
 function textResult(text: string, details?: Record<string, unknown>) {

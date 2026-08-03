@@ -29,6 +29,28 @@ export interface MatchedFallback {
   fallback: ModelRef;
 }
 
+export type RuleWarningCode = "provider_rule_shadows_model" | "duplicate_rule";
+
+export interface RuleWarning {
+  severity: "warning";
+  code: RuleWarningCode;
+  message: string;
+  ruleIndex: number;
+  ruleName?: string;
+  shadowedByRuleIndex: number;
+  shadowedByRuleName?: string;
+  statuses: number[];
+  matchProviders?: string[];
+  matchModels?: ModelRef[];
+}
+
+interface NormalizedRuleForWarnings {
+  providers: Set<string>;
+  modelKeys: Set<string>;
+  models: ModelRef[];
+  statuses: Set<number>;
+}
+
 export function defaultConfig(): ModelFallbackConfig {
   return {
     version: CONFIG_VERSION,
@@ -68,6 +90,60 @@ export function findFallback(config: ModelFallbackConfig, model: Pick<Model<any>
   return undefined;
 }
 
+export function analyzeRuleWarnings(config: ModelFallbackConfig): RuleWarning[] {
+  const normalizedRules = config.rules.map((rule) => normalizeRuleForWarnings(rule));
+  const warnings: RuleWarning[] = [];
+
+  rules:
+  for (let ruleIndex = 1; ruleIndex < config.rules.length; ruleIndex += 1) {
+    const laterRule = config.rules[ruleIndex];
+    const later = normalizedRules[ruleIndex];
+    const reportedModelShadowKeys = new Set<string>();
+
+    for (let earlierIndex = 0; earlierIndex < ruleIndex; earlierIndex += 1) {
+      const earlierRule = config.rules[earlierIndex];
+      const earlier = normalizedRules[earlierIndex];
+
+      if (setsEqual(earlier.statuses, later.statuses) && ruleScopesEqual(earlier, later)) {
+        warnings.push({
+          severity: "warning",
+          code: "duplicate_rule",
+          message: `${ruleLabel(laterRule, ruleIndex)} is shadowed by ${ruleLabel(earlierRule, earlierIndex)} because both rules match the same providers/models and statuses; the earlier rule wins first.`,
+          ruleIndex,
+          ruleName: laterRule.name,
+          shadowedByRuleIndex: earlierIndex,
+          shadowedByRuleName: earlierRule.name,
+          statuses: sortedNumbers(later.statuses),
+          matchProviders: sortedStrings(later.providers),
+          matchModels: sortedModels(later.models),
+        });
+        continue rules;
+      }
+
+      if (earlier.providers.size === 0 || later.models.length === 0 || !statusSetCovers(earlier.statuses, later.statuses)) continue;
+
+      const shadowedModels = later.models.filter((entry) => earlier.providers.has(entry.provider) && !reportedModelShadowKeys.has(modelRefKey(entry)));
+      if (shadowedModels.length === 0) continue;
+      for (const entry of shadowedModels) reportedModelShadowKeys.add(modelRefKey(entry));
+
+      warnings.push({
+        severity: "warning",
+        code: "provider_rule_shadows_model",
+        message: `${ruleLabel(laterRule, ruleIndex)} has model match ${formatModelList(shadowedModels)} shadowed by ${ruleLabel(earlierRule, earlierIndex)} for statuses ${formatStatusList(later.statuses)}; the earlier provider-wide rule wins first.`,
+        ruleIndex,
+        ruleName: laterRule.name,
+        shadowedByRuleIndex: earlierIndex,
+        shadowedByRuleName: earlierRule.name,
+        statuses: sortedNumbers(later.statuses),
+        matchProviders: sortedStrings(new Set(shadowedModels.map((entry) => entry.provider))),
+        matchModels: sortedModels(shadowedModels),
+      });
+    }
+  }
+
+  return warnings;
+}
+
 export function modelRefKey(ref: ModelRef): string {
   return `${ref.provider}/${ref.model}`;
 }
@@ -98,6 +174,61 @@ function modelMatches(rule: FallbackRule, model: Pick<Model<any>, "provider" | "
 
 function statusesFor(rule: FallbackRule): Set<number> {
   return new Set(rule.statuses && rule.statuses.length > 0 ? rule.statuses : DEFAULT_FALLBACK_STATUSES);
+}
+
+function normalizeRuleForWarnings(rule: FallbackRule): NormalizedRuleForWarnings {
+  const modelsByKey = new Map((rule.matchModels ?? []).map((entry) => [modelRefKey(entry), entry]));
+  return {
+    providers: new Set(rule.matchProviders ?? []),
+    modelKeys: new Set(modelsByKey.keys()),
+    models: [...modelsByKey.values()],
+    statuses: statusesFor(rule),
+  };
+}
+
+function ruleScopesEqual(left: NormalizedRuleForWarnings, right: NormalizedRuleForWarnings): boolean {
+  return setsEqual(left.providers, right.providers) && setsEqual(left.modelKeys, right.modelKeys);
+}
+
+function statusSetCovers(earlier: Set<number>, later: Set<number>): boolean {
+  return setCovers(earlier, later);
+}
+
+function setsEqual<T>(left: Set<T>, right: Set<T>): boolean {
+  return left.size === right.size && setCovers(left, right);
+}
+
+function setCovers<T>(earlier: Set<T>, later: Set<T>): boolean {
+  for (const value of later) {
+    if (!earlier.has(value)) return false;
+  }
+  return true;
+}
+
+function sortedNumbers(values: Set<number>): number[] {
+  return [...values].sort((left, right) => left - right);
+}
+
+function sortedStrings(values: Set<string>): string[] | undefined {
+  const sorted = [...values].sort();
+  return sorted.length > 0 ? sorted : undefined;
+}
+
+function sortedModels(models: ModelRef[]): ModelRef[] | undefined {
+  const sorted = [...new Map(models.map((entry) => [modelRefKey(entry), entry])).values()].sort((left, right) => modelRefKey(left).localeCompare(modelRefKey(right)));
+  return sorted.length > 0 ? sorted : undefined;
+}
+
+function ruleLabel(rule: FallbackRule, index: number): string {
+  return rule.name ? `rules[${index}] (${rule.name})` : `rules[${index}]`;
+}
+
+function formatStatusList(statuses: Set<number>): string {
+  return sortedNumbers(statuses).join(", ");
+}
+
+function formatModelList(models: ModelRef[]): string {
+  return models.map(modelRefKey).sort().join(", ");
 }
 
 function readModelRef(value: unknown, path: string): ModelRef {
