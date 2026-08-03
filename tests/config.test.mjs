@@ -77,6 +77,44 @@ test("rule warnings detect duplicate same-scope and same-status rules", () => {
   ]);
 });
 
+test("rule warnings detect provider subset rules with covered statuses", () => {
+  const config = warningConfig([
+    { name: "broad-providers", matchProviders: ["zai", "openai"], fallback },
+    { name: "provider-subset", matchProviders: ["zai"], statuses: [429], fallback: { provider: "openai", model: "gpt-4.1-mini" } },
+  ]);
+
+  const warnings = analyzeRuleWarnings(config);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].code, "shadowed_rule");
+  assert.equal(warnings[0].ruleIndex, 1);
+  assert.equal(warnings[0].shadowedByRuleIndex, 0);
+  assert.deepEqual(warnings[0].statuses, [429]);
+  assert.deepEqual(warnings[0].matchProviders, ["zai"]);
+});
+
+test("rule warnings detect model subset rules with covered statuses", () => {
+  const config = warningConfig([
+    {
+      name: "broad-models",
+      matchModels: [
+        { provider: "zai", model: "glm-4.7" },
+        { provider: "zai", model: "glm-5" },
+      ],
+      statuses: [429, 500],
+      fallback,
+    },
+    { name: "model-subset", matchModels: [{ provider: "zai", model: "glm-4.7" }], statuses: [429], fallback: { provider: "openai", model: "gpt-4.1-mini" } },
+  ]);
+
+  const warnings = analyzeRuleWarnings(config);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].code, "shadowed_rule");
+  assert.equal(warnings[0].ruleIndex, 1);
+  assert.equal(warnings[0].shadowedByRuleIndex, 0);
+  assert.deepEqual(warnings[0].statuses, [429]);
+  assert.deepEqual(warnings[0].matchModels, [{ provider: "zai", model: "glm-4.7" }]);
+});
+
 test("rule warnings do not report partial status overlaps as complete shadows", () => {
   const config = warningConfig([
     { name: "provider-429", matchProviders: ["zai"], statuses: [429], fallback },

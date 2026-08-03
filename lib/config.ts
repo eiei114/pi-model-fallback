@@ -29,7 +29,7 @@ export interface MatchedFallback {
   fallback: ModelRef;
 }
 
-export type RuleWarningCode = "provider_rule_shadows_model" | "duplicate_rule";
+export type RuleWarningCode = "provider_rule_shadows_model" | "shadowed_rule" | "duplicate_rule";
 
 export interface RuleWarning {
   severity: "warning";
@@ -105,18 +105,12 @@ export function analyzeRuleWarnings(config: ModelFallbackConfig): RuleWarning[] 
       const earlier = normalizedRules[earlierIndex];
 
       if (setsEqual(earlier.statuses, later.statuses) && ruleScopesEqual(earlier, later)) {
-        warnings.push({
-          severity: "warning",
-          code: "duplicate_rule",
-          message: `${ruleLabel(laterRule, ruleIndex)} is shadowed by ${ruleLabel(earlierRule, earlierIndex)} because both rules match the same providers/models and statuses; the earlier rule wins first.`,
-          ruleIndex,
-          ruleName: laterRule.name,
-          shadowedByRuleIndex: earlierIndex,
-          shadowedByRuleName: earlierRule.name,
-          statuses: sortedNumbers(later.statuses),
-          matchProviders: sortedStrings(later.providers),
-          matchModels: sortedModels(later.models),
-        });
+        warnings.push(duplicateRuleWarning(laterRule, ruleIndex, later, earlierRule, earlierIndex));
+        continue rules;
+      }
+
+      if (statusSetCovers(earlier.statuses, later.statuses) && ruleScopeCovers(earlier, later)) {
+        warnings.push(scopeShadowWarning(laterRule, ruleIndex, later, earlierRule, earlierIndex, earlier));
         continue rules;
       }
 
@@ -126,18 +120,7 @@ export function analyzeRuleWarnings(config: ModelFallbackConfig): RuleWarning[] 
       if (shadowedModels.length === 0) continue;
       for (const entry of shadowedModels) reportedModelShadowKeys.add(modelRefKey(entry));
 
-      warnings.push({
-        severity: "warning",
-        code: "provider_rule_shadows_model",
-        message: `${ruleLabel(laterRule, ruleIndex)} has model match ${formatModelList(shadowedModels)} shadowed by ${ruleLabel(earlierRule, earlierIndex)} for statuses ${formatStatusList(later.statuses)}; the earlier provider-wide rule wins first.`,
-        ruleIndex,
-        ruleName: laterRule.name,
-        shadowedByRuleIndex: earlierIndex,
-        shadowedByRuleName: earlierRule.name,
-        statuses: sortedNumbers(later.statuses),
-        matchProviders: sortedStrings(new Set(shadowedModels.map((entry) => entry.provider))),
-        matchModels: sortedModels(shadowedModels),
-      });
+      warnings.push(providerModelShadowWarning(laterRule, ruleIndex, later, earlierRule, earlierIndex, shadowedModels));
     }
   }
 
@@ -188,6 +171,73 @@ function normalizeRuleForWarnings(rule: FallbackRule): NormalizedRuleForWarnings
 
 function ruleScopesEqual(left: NormalizedRuleForWarnings, right: NormalizedRuleForWarnings): boolean {
   return setsEqual(left.providers, right.providers) && setsEqual(left.modelKeys, right.modelKeys);
+}
+
+function ruleScopeCovers(earlier: NormalizedRuleForWarnings, later: NormalizedRuleForWarnings): boolean {
+  return setCovers(earlier.providers, later.providers) && later.models.every((entry) => earlier.providers.has(entry.provider) || earlier.modelKeys.has(modelRefKey(entry)));
+}
+
+function duplicateRuleWarning(laterRule: FallbackRule, ruleIndex: number, later: NormalizedRuleForWarnings, earlierRule: FallbackRule, earlierIndex: number): RuleWarning {
+  return {
+    severity: "warning",
+    code: "duplicate_rule",
+    message: `${ruleLabel(laterRule, ruleIndex)} is shadowed by ${ruleLabel(earlierRule, earlierIndex)} because both rules match the same providers/models and statuses; the earlier rule wins first.`,
+    ruleIndex,
+    ruleName: laterRule.name,
+    shadowedByRuleIndex: earlierIndex,
+    shadowedByRuleName: earlierRule.name,
+    statuses: sortedNumbers(later.statuses),
+    matchProviders: sortedStrings(later.providers),
+    matchModels: sortedModels(later.models),
+  };
+}
+
+function scopeShadowWarning(
+  laterRule: FallbackRule,
+  ruleIndex: number,
+  later: NormalizedRuleForWarnings,
+  earlierRule: FallbackRule,
+  earlierIndex: number,
+  earlier: NormalizedRuleForWarnings,
+): RuleWarning {
+  const providerCoveredModels = later.models.filter((entry) => earlier.providers.has(entry.provider));
+  const allModelsProviderCovered = later.providers.size === 0 && later.models.length > 0 && providerCoveredModels.length === later.models.length;
+  if (allModelsProviderCovered) return providerModelShadowWarning(laterRule, ruleIndex, later, earlierRule, earlierIndex, providerCoveredModels);
+
+  return {
+    severity: "warning",
+    code: "shadowed_rule",
+    message: `${ruleLabel(laterRule, ruleIndex)} is shadowed by ${ruleLabel(earlierRule, earlierIndex)} because the earlier rule covers its provider/model scope and statuses; the earlier rule wins first.`,
+    ruleIndex,
+    ruleName: laterRule.name,
+    shadowedByRuleIndex: earlierIndex,
+    shadowedByRuleName: earlierRule.name,
+    statuses: sortedNumbers(later.statuses),
+    matchProviders: sortedStrings(later.providers),
+    matchModels: sortedModels(later.models),
+  };
+}
+
+function providerModelShadowWarning(
+  laterRule: FallbackRule,
+  ruleIndex: number,
+  later: NormalizedRuleForWarnings,
+  earlierRule: FallbackRule,
+  earlierIndex: number,
+  shadowedModels: ModelRef[],
+): RuleWarning {
+  return {
+    severity: "warning",
+    code: "provider_rule_shadows_model",
+    message: `${ruleLabel(laterRule, ruleIndex)} has model match ${formatModelList(shadowedModels)} shadowed by ${ruleLabel(earlierRule, earlierIndex)} for statuses ${formatStatusList(later.statuses)}; the earlier provider-wide rule wins first.`,
+    ruleIndex,
+    ruleName: laterRule.name,
+    shadowedByRuleIndex: earlierIndex,
+    shadowedByRuleName: earlierRule.name,
+    statuses: sortedNumbers(later.statuses),
+    matchProviders: sortedStrings(new Set(shadowedModels.map((entry) => entry.provider))),
+    matchModels: sortedModels(shadowedModels),
+  };
 }
 
 function statusSetCovers(earlier: Set<number>, later: Set<number>): boolean {
