@@ -20,3 +20,15 @@ test("package metadata points at pi-model-fallback", () => {
 test("package uses public publish config", () => {
   assert.equal(packageJson.publishConfig.access, "public");
 });
+
+test("pi devDependencies stay on the same release line", () => {
+  const piPackages = Object.entries(packageJson.devDependencies ?? {})
+    .filter(([name]) => name.startsWith("@earendil-works/pi-"))
+    .map(([, version]) => version.replace(/^[~^]/, ""));
+
+  assert.ok(piPackages.length >= 2, "expected multiple @earendil-works/pi-* devDependencies");
+  assert.ok(
+    piPackages.every((version) => version === piPackages[0]),
+    `pi devDependencies should share one version line, got: ${piPackages.join(", ")}`,
+  );
+});
