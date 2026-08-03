@@ -4,12 +4,13 @@
 
 ### Fixed
 
+- Warn on completely shadowed fallback rules in config validation, save confirmations, status output, and config details without rejecting warning-bearing configs.
 - Document the missing `git add`/`git commit` steps in `CONTRIBUTING.md` release instructions so maintainers can trigger auto-release after `npm version patch --no-git-tag-version`.
 - Clarify that maintainers should update `CHANGELOG.md` before staging release files.
 
 ### Changed
 
-- Bump package version to `0.3.4` for the next patch release.
+- Bump package version to `0.3.5` for the next patch release.
 
 - Declare `@earendil-works/pi-agent-core` as a peerDependency to align with pi-extension-template.
 - Add Buy Me a Coffee sponsor button to README and native GitHub funding link via `.github/FUNDING.yml`.
