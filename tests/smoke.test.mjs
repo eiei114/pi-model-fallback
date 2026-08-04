@@ -20,3 +20,23 @@ test("package metadata points at pi-model-fallback", () => {
 test("package uses public publish config", () => {
   assert.equal(packageJson.publishConfig.access, "public");
 });
+
+test("pi devDependencies stay on the same release line", () => {
+  const requiredPiPackages = [
+    "@earendil-works/pi-agent-core",
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-coding-agent",
+    "@earendil-works/pi-tui",
+  ];
+
+  const piVersions = requiredPiPackages.map((name) => {
+    const version = packageJson.devDependencies?.[name];
+    assert.ok(version, `missing devDependency ${name}`);
+    return version.replace(/^[~^]/, "");
+  });
+
+  assert.ok(
+    piVersions.every((version) => version === piVersions[0]),
+    `pi devDependencies should share one version line, got: ${requiredPiPackages.map((name, index) => `${name}@${piVersions[index]}`).join(", ")}`,
+  );
+});
