@@ -22,13 +22,21 @@ test("package uses public publish config", () => {
 });
 
 test("pi devDependencies stay on the same release line", () => {
-  const piPackages = Object.entries(packageJson.devDependencies ?? {})
-    .filter(([name]) => name.startsWith("@earendil-works/pi-"))
-    .map(([, version]) => version.replace(/^[~^]/, ""));
+  const requiredPiPackages = [
+    "@earendil-works/pi-agent-core",
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-coding-agent",
+    "@earendil-works/pi-tui",
+  ];
 
-  assert.ok(piPackages.length >= 2, "expected multiple @earendil-works/pi-* devDependencies");
+  const piVersions = requiredPiPackages.map((name) => {
+    const version = packageJson.devDependencies?.[name];
+    assert.ok(version, `missing devDependency ${name}`);
+    return version.replace(/^[~^]/, "");
+  });
+
   assert.ok(
-    piPackages.every((version) => version === piPackages[0]),
-    `pi devDependencies should share one version line, got: ${piPackages.join(", ")}`,
+    piVersions.every((version) => version === piVersions[0]),
+    `pi devDependencies should share one version line, got: ${requiredPiPackages.map((name, index) => `${name}@${piVersions[index]}`).join(", ")}`,
   );
 });
