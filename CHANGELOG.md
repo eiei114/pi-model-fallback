@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [0.3.7] - 2026-08-22
+
+### Changed
+
+- Merge the 2026-08-22 managed OSS dependency and maintenance PR batch.
+
 ### Fixed
 
 - Warn on completely shadowed fallback rules in config validation, save confirmations, status output, and config details without rejecting warning-bearing configs.
