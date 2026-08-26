@@ -4,11 +4,57 @@ import test from "node:test";
 
 const usageMd = await readFile(new URL("../docs/usage.md", import.meta.url), "utf8");
 const contributingMd = await readFile(new URL("../CONTRIBUTING.md", import.meta.url), "utf8");
+const changelogMd = await readFile(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
 test("usage docs avoid stale version-specific replay wording", () => {
   assert.doesNotMatch(usageMd, /v0\.1\.0/);
   assert.doesNotMatch(usageMd, /replayed in v\d/i);
   assert.match(usageMd, /not automatically replayed/i);
+});
+
+function parseChangelogSections(markdown) {
+  const sections = [];
+  let current = null;
+
+  for (const line of markdown.split("\n")) {
+    const versionMatch = line.match(/^## \[(.+?)\] - (.+)$/);
+    if (versionMatch) {
+      current = { version: versionMatch[1], date: versionMatch[2], headings: [] };
+      sections.push(current);
+      continue;
+    }
+
+    const headingMatch = line.match(/^### (.+)$/);
+    if (headingMatch && current) {
+      current.headings.push(headingMatch[1]);
+    }
+  }
+
+  return sections;
+}
+
+test("changelog avoids placeholder dates and duplicate section headings", () => {
+  assert.doesNotMatch(changelogMd, /YYYY-MM-DD/);
+
+  for (const section of parseChangelogSections(changelogMd)) {
+    const duplicates = section.headings.filter((heading, index) => section.headings.indexOf(heading) !== index);
+    assert.deepEqual(
+      duplicates,
+      [],
+      `CHANGELOG [${section.version}] repeats section headings: ${[...new Set(duplicates)].join(", ")}`,
+    );
+  }
+});
+
+test("changelog latest release matches package version", () => {
+  const releasedSections = parseChangelogSections(changelogMd).filter((section) => section.version !== "Unreleased");
+  assert.ok(releasedSections.length > 0, "CHANGELOG should include at least one released version");
+  assert.equal(
+    releasedSections[0].version,
+    packageJson.version,
+    "top released CHANGELOG entry should match package.json version",
+  );
 });
 
 test("contributing release docs commit version bump before push", () => {
