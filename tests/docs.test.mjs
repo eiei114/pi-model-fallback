@@ -18,9 +18,13 @@ function parseChangelogSections(markdown) {
   let current = null;
 
   for (const line of markdown.split("\n")) {
-    const versionMatch = line.match(/^## \[(.+?)\] - (.+)$/);
+    const versionMatch = line.match(/^## (?:\[(.+?)\] - (.+)|(\d+\.\d+\.\d+)|Unreleased)$/);
     if (versionMatch) {
-      current = { version: versionMatch[1], date: versionMatch[2], headings: [] };
+      current = {
+        version: versionMatch[1] ?? versionMatch[3] ?? "Unreleased",
+        date: versionMatch[2] ?? null,
+        headings: [],
+      };
       sections.push(current);
       continue;
     }
