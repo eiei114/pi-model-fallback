@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const ciYaml = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+const autoReleaseYaml = await readFile(new URL("../.github/workflows/auto-release.yml", import.meta.url), "utf8");
 
 const BUN_SETUP_USES = "oven-sh/setup-bun";
 const BUN_COMMAND_RE = /(?:^|[|;&]\s*)bun(?:\s|$)/;
@@ -158,6 +159,19 @@ function findJobsWithUnusedBunSetup(yaml) {
     return usesBunSetup && !runsBun ? [job.name] : [];
   });
 }
+
+test("auto-release workflow uses real newlines in gh release notes", () => {
+  assert.doesNotMatch(
+    autoReleaseYaml,
+    /NOTES="\$\{NOTES}\\n\\n/,
+    "bash double-quoted \\n\\n renders literally in GitHub release notes; use printf or $'\\n\\n'",
+  );
+  assert.match(
+    autoReleaseYaml,
+    /printf 'Released %s\.\\n\\n\*\*Full Changelog\*\*:/,
+    "auto-release should build release notes with printf so gh release create gets real newlines",
+  );
+});
 
 test("ci workflow does not install Bun without running it", () => {
   const jobsWithUnusedBunSetup = findJobsWithUnusedBunSetup(ciYaml);

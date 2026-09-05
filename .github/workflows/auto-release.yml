@@ -64,9 +64,10 @@ jobs:
         run: |
           TAG="${{ steps.check.outputs.tag }}"
           PREV_TAG=$(git tag --sort=-version:refname | head -1)
-          NOTES="Released ${TAG}."
           if [ -n "$PREV_TAG" ]; then
-            NOTES="${NOTES}\n\n**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
+            NOTES=$(printf 'Released %s.\n\n**Full Changelog**: https://github.com/%s/compare/%s...%s' "$TAG" "${{ github.repository }}" "$PREV_TAG" "$TAG")
+          else
+            NOTES="Released ${TAG}."
           fi
           git tag "$TAG"
           git push origin "$TAG"
