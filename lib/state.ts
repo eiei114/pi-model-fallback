@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { ModelRef } from "./config.js";
+import { modelRefKey, type ModelRef } from "./config.ts";
+import { isRecord, readJsonIfExists, readModelRef, readNonEmptyString } from "./internal.ts";
 
 export const STATE_VERSION = 1;
 
@@ -39,10 +40,6 @@ export function upsertStateEntry(state: FallbackState, entry: FallbackStateEntry
     version: STATE_VERSION,
     entries: [entry, ...state.entries.filter((item) => modelRefKey(item.source) !== sourceKey)],
   };
-}
-
-function modelRefKey(ref: ModelRef): string {
-  return `${ref.provider}/${ref.model}`;
 }
 
 export function findActiveStateEntry(state: FallbackState, source: ModelRef, now = new Date()): FallbackStateEntry | undefined {
@@ -87,32 +84,3 @@ function validateEntry(value: unknown, index: number): FallbackStateEntry {
   return entry;
 }
 
-function readModelRef(value: unknown, path: string): ModelRef {
-  if (!isRecord(value)) throw new Error(`${path} must be an object.`);
-  return {
-    provider: readNonEmptyString(value.provider, `${path}.provider`),
-    model: readNonEmptyString(value.model, `${path}.model`),
-  };
-}
-
-function readNonEmptyString(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.trim() === "") throw new Error(`${path} must be a non-empty string.`);
-  return value.trim();
-}
-
-async function readJsonIfExists(path: string): Promise<unknown | undefined> {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") return undefined;
-    throw error;
-  }
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
