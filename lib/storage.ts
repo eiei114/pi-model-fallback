@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { defaultConfig, validateConfigShape, type ModelFallbackConfig } from "./config.js";
+import { defaultConfig, validateConfigShape, type ModelFallbackConfig } from "./config.ts";
+import { readJsonIfExists } from "./internal.ts";
 
 export interface ModelFallbackPaths {
   dir: string;
@@ -23,15 +24,3 @@ export async function writeConfig(path: string, config: ModelFallbackConfig): Pr
   await writeFile(path, `${JSON.stringify(validateConfigShape(config), null, 2)}\n`, "utf8");
 }
 
-async function readJsonIfExists(path: string): Promise<unknown | undefined> {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") return undefined;
-    throw error;
-  }
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
-}

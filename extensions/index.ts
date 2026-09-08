@@ -17,6 +17,7 @@ import {
 } from "../lib/config.js";
 import { parseStatusFromErrorMessage } from "../lib/error-status.js";
 import { emptyState, findActiveStateEntry, pruneExpiredState, readState, upsertStateEntry, validateStateShape, writeState, type FallbackState } from "../lib/state.js";
+import { isRecord } from "../lib/internal.ts";
 import { modelFallbackPaths, readConfig, writeConfig, type ModelFallbackPaths } from "../lib/storage.js";
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -423,6 +424,3 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
