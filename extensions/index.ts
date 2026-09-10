@@ -112,7 +112,10 @@ export default function modelFallback(pi: ExtensionAPI) {
     if (!loaded) return false;
     const match = findFallback(loaded, { provider: source.provider, id: source.model }, status);
     if (!match) return false;
-    if (activeFallbackKey && activeFallbackKey === modelRefKey(match.fallback)) return false;
+    // Only skip when the failing model IS the active fallback (its own failure should not
+    // re-trigger). A failure on the original model while the fallback is merely preselected
+    // must still proceed so auto-retry can run on the fallback.
+    if (activeFallbackKey && modelRefKey(source) === activeFallbackKey) return false;
 
     const fallbackModel = ctx.modelRegistry.find(match.fallback.provider, match.fallback.model);
     if (!fallbackModel) {

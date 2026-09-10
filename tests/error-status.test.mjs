@@ -23,6 +23,15 @@ test("parseStatusFromErrorMessage extracts leading bare status codes", () => {
   assert.equal(parseStatusFromErrorMessage("503: service unavailable"), 503);
 });
 
+test("parseStatusFromErrorMessage extracts statuses behind an Error prefix", () => {
+  assert.equal(
+    parseStatusFromErrorMessage('Error: 401: {"type":"CreditsError","message":"Insufficient balance. Manage your billing here."}'),
+    401,
+  );
+  assert.equal(parseStatusFromErrorMessage("error: 429 too many requests"), 429);
+  assert.equal(parseStatusFromErrorMessage("ERROR 500: internal server error"), 500);
+});
+
 test("parseStatusFromErrorMessage ignores unrelated 3-digit numbers", () => {
   assert.equal(parseStatusFromErrorMessage("429 tokens remaining in context window"), undefined);
   assert.equal(parseStatusFromErrorMessage("processed 404 items before retry"), undefined);
