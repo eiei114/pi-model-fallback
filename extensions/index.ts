@@ -107,17 +107,17 @@ export default function modelFallback(pi: ExtensionAPI) {
     ctx.ui.notify(`Model fallback preselected: ${originalModelKey} → ${activeFallbackKey} until ${active.until}.`, "warning");
   }
 
-  async function persistFailure(source: ModelRef, status: number, headers: Record<string, string>, ctx: ExtensionContext): Promise<void> {
+  async function persistFailure(source: ModelRef, status: number, headers: Record<string, string>, ctx: ExtensionContext): Promise<boolean> {
     const loaded = config ?? (await loadConfig(ctx));
-    if (!loaded) return;
+    if (!loaded) return false;
     const match = findFallback(loaded, { provider: source.provider, id: source.model }, status);
-    if (!match) return;
-    if (activeFallbackKey && activeFallbackKey === modelRefKey(match.fallback)) return;
+    if (!match) return false;
+    if (activeFallbackKey && activeFallbackKey === modelRefKey(match.fallback)) return false;
 
     const fallbackModel = ctx.modelRegistry.find(match.fallback.provider, match.fallback.model);
     if (!fallbackModel) {
       ctx.ui.notify(`Model fallback missing: ${modelRefKey(match.fallback)}`, "warning");
-      return;
+      return false;
     }
 
     const now = new Date();
@@ -136,7 +136,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     const ok = await pi.setModel(fallbackModel);
     if (!ok) {
       ctx.ui.notify(`Model fallback auth unavailable: ${modelRefKey(match.fallback)}`, "warning");
-      return;
+      return false;
     }
 
     originalModelKey = modelRefKey(source);
@@ -144,6 +144,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     lastFallbackReason = `${status} from ${originalModelKey}; persistent until ${until}`;
     updateStatus(ctx);
     ctx.ui.notify(`Model fallback: ${originalModelKey} → ${activeFallbackKey} (${status}). Future sessions preselect fallback until ${until}.`, "warning");
+    return true;
   }
 
   pi.on("agent_start", async (_event, ctx) => {
@@ -183,7 +184,14 @@ export default function modelFallback(pi: ExtensionAPI) {
     const model = typeof message.model === "string" ? message.model : ctx.model?.id;
     if (!provider || !model) return;
     if (activeFallbackKey && `${provider}/${model}` === activeFallbackKey) return;
-    await persistFailure({ provider, model }, status, {}, ctx);
+    const switched = await persistFailure({ provider, model }, status, {}, ctx);
+    if (!switched) return;
+    const loaded = config;
+    if (!loaded || loaded.autoRetry === false) return;
+    const prompt = lastUserPromptText(ctx);
+    if (!prompt) return;
+    ctx.ui.notify(`Model fallback: retrying failed prompt on ${activeFallbackKey}.`, "info");
+    await pi.sendUserMessage(prompt, { deliverAs: "followUp" });
   });
 
   pi.registerCommand("model-fallback:status", {
@@ -267,6 +275,33 @@ export default function modelFallback(pi: ExtensionAPI) {
   });
 }
 
+function autoRetryEnabled(config: ModelFallbackConfig): boolean {
+  return config.autoRetry !== false;
+}
+
+function lastUserPromptText(ctx: ExtensionContext): string | undefined {
+  const entries = ctx.sessionManager.getEntries() as unknown[];
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!isRecord(entry) || !isRecord(entry.message)) continue;
+    const message = entry.message;
+    if (message.role !== "user") continue;
+    return userMessageText(message.content);
+  }
+  return undefined;
+}
+
+function userMessageText(content: unknown): string | undefined {
+  if (typeof content === "string") return content.trim() || undefined;
+  if (!Array.isArray(content)) return undefined;
+  const parts: string[] = [];
+  for (const block of content) {
+    if (isRecord(block) && block.type === "text" && typeof block.text === "string") parts.push(block.text);
+  }
+  const text = parts.join("\n").trim();
+  return text || undefined;
+}
+
 function shouldUseProjectLocalState(ctx: ExtensionContext): boolean {
   const projectSettingsPath = join(ctx.cwd, ".pi", "settings.json");
   return existsSync(projectSettingsPath) && projectSettingsIncludesThisPackage(projectSettingsPath);
@@ -308,6 +343,7 @@ function formatStatus(
 ): string {
   return [
     `Model fallback: ${config.enabled ? "enabled" : "disabled"}`,
+    `Auto retry: ${autoRetryEnabled(config) ? "enabled" : "disabled"}`,
     `Config: ${configPath}`,
     `State: ${statePath}`,
     `Rules: ${config.rules.length}`,
@@ -323,6 +359,7 @@ function formatStatus(
 function summarizeConfig(config: ModelFallbackConfig, warnings: RuleWarning[]): string {
   return [
     `enabled: ${config.enabled}`,
+    `autoRetry: ${autoRetryEnabled(config)}`,
     ...config.rules.map((rule) => `${rule.name ?? "rule"}: ${rule.matchProviders?.join(",") ?? "models"} -> ${modelRefKey(rule.fallback)}`),
     `warnings: ${warningSummary(warnings)}`,
   ].join("\n");

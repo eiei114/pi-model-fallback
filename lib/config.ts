@@ -22,6 +22,8 @@ export interface FallbackRule {
 export interface ModelFallbackConfig {
   version: 1;
   enabled: boolean;
+  /** Re-queue the failed user prompt after switching to the fallback model so the turn retries automatically. Defaults to true. */
+  autoRetry?: boolean;
   rules: FallbackRule[];
 }
 
@@ -56,6 +58,7 @@ export function defaultConfig(): ModelFallbackConfig {
   return {
     version: CONFIG_VERSION,
     enabled: true,
+    autoRetry: true,
     rules: [
       {
         name: "zai-to-deepseek-flash",
@@ -77,6 +80,7 @@ export function validateConfigShape(value: unknown): ModelFallbackConfig {
   return {
     version: CONFIG_VERSION,
     enabled,
+    autoRetry: typeof value.autoRetry === "boolean" ? value.autoRetry : true,
     rules: value.rules.map((ruleValue, index) => validateRule(ruleValue, index)),
   };
 }
