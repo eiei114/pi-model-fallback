@@ -1,7 +1,8 @@
 export function parseStatusFromErrorMessage(message: string): number | undefined {
   const patterns: RegExp[] = [
-    // Leading bare status code, e.g. "401: {\"type\":\"CreditsError\"...}" (OpenCode Go, OpenRouter relays)
-    /^\s*([1-5][0-9]{2})\s*:/,
+    // Leading bare status code, optionally prefixed with "Error:", e.g. "401: {\"type\":\"CreditsError\"...}"
+    // or "Error: 401: {\"type\":\"CreditsError\"...}" (OpenCode Go, OpenRouter relays)
+    /^\s*(?:error\s*:?\s*)?([1-5][0-9]{2})\s*:/i,
     /\b(?:status|code|http)\s*[:\s]?\s*([1-5][0-9]{2})\b/i,
     /\bHTTP\/\d(?:\.\d)?\s+([1-5][0-9]{2})\b/,
     /\b(?:rate[\s-]?limit(?:ed)?|too many requests)[^0-9]{0,40}([45][0-9]{2})\b/i,

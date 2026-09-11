@@ -70,6 +70,7 @@ Default config shape:
 {
   "version": 1,
   "enabled": true,
+  "autoRetry": true,
   "rules": [
     {
       "name": "zai-to-deepseek-flash",
@@ -91,6 +92,11 @@ Rule fields:
 - `statuses`: optional; defaults to `429, 500, 502, 503, 504`
 - `cooldownMs`: optional persistent fallback window
 - `fallback`: target model Pi should switch to
+
+Top-level fields:
+
+- `enabled`: toggle the extension without deleting rules
+- `autoRetry`: when a fallback fires from a failed turn, automatically re-queue the failed user prompt so the turn retries on the fallback model (defaults to `true`; set to `false` to only switch models)
 
 Rules use first-match order: the first rule whose provider/model and status match wins. Put specific `matchModels` rules before broad `matchProviders` rules when they should take priority. `model_fallback_config validate`, `save`, `read`, and `status` report warning-only diagnostics when a later rule or model entry is completely shadowed by an earlier rule; `/model-fallback:status` also includes a concise warning summary for the current config. Warning-bearing config remains valid and can still be saved.
 

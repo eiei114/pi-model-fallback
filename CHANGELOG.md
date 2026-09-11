@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `autoRetry` config option (default `true`): when a fallback switch happens after a failed turn, the failed user prompt is automatically re-queued so the turn retries on the fallback model.
+
 ## [0.3.7] - 2026-08-22
 
 ### Changed

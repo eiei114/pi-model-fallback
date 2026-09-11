@@ -21,6 +21,15 @@ test("default config does not affect healthy responses or non-matching providers
   assert.equal(findFallback(config, { provider: "deepseek", id: "deepseek-v4-flash" }, 429), undefined);
 });
 
+test("default config enables auto retry", () => {
+  assert.equal(defaultConfig().autoRetry, true);
+});
+
+test("config validation defaults autoRetry to true and preserves explicit false", () => {
+  assert.equal(validateConfigShape({ version: 1, enabled: true, rules: [{ matchProviders: ["zai"], fallback }] }).autoRetry, true);
+  assert.equal(validateConfigShape({ version: 1, enabled: true, autoRetry: false, rules: [{ matchProviders: ["zai"], fallback }] }).autoRetry, false);
+});
+
 test("config validation requires matchProviders or matchModels", () => {
   assert.throws(
     () => validateConfigShape({ version: 1, enabled: true, rules: [{ fallback }] }),
