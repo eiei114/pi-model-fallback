@@ -17,6 +17,7 @@
 ### Changed
 
 - Bump Pi dev dependencies to `@earendil-works/*` 0.84.4 and `@types/node` 26.4.0.
+- Add `jiti` as a devDependency so auto-retry integration tests run in CI.
 
 ## [0.3.7] - 2026-08-22
 
