@@ -11,6 +11,18 @@ test("parseStatusFromErrorMessage extracts anchored HTTP statuses", () => {
   assert.equal(parseStatusFromErrorMessage("error 500 from upstream"), 500);
 });
 
+test("parseStatusFromErrorMessage extracts leading bare status codes", () => {
+  assert.equal(
+    parseStatusFromErrorMessage('401: {"type":"CreditsError","message":"Insufficient balance."}'),
+    401,
+  );
+  assert.equal(
+    parseStatusFromErrorMessage('429: {"message":"Provider returned error","code":429}'),
+    429,
+  );
+  assert.equal(parseStatusFromErrorMessage("503: service unavailable"), 503);
+});
+
 test("parseStatusFromErrorMessage ignores unrelated 3-digit numbers", () => {
   assert.equal(parseStatusFromErrorMessage("429 tokens remaining in context window"), undefined);
   assert.equal(parseStatusFromErrorMessage("processed 404 items before retry"), undefined);
