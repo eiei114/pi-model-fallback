@@ -2,9 +2,21 @@
 
 ## Unreleased
 
+## [0.4.0] - 2026-09-11
+
 ### Added
 
 - `autoRetry` config option (default `true`): when a fallback switch happens after a failed turn, the failed user prompt is automatically re-queued so the turn retries on the fallback model.
+
+### Fixed
+
+- Parse leading bare status codes in provider error messages (for example `401: {...}` from OpenCode Go and OpenRouter) so fallback rules fire on real-world failure shapes.
+- Auto-retry when a fallback model is merely preselected instead of skipping the switch path.
+- Parse optional `Error:` prefixes before leading bare status codes.
+
+### Changed
+
+- Bump Pi dev dependencies to `@earendil-works/*` 0.84.4 and `@types/node` 26.4.0.
 
 ## [0.3.7] - 2026-08-22
 
