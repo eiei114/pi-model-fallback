@@ -53,7 +53,7 @@
     "@earendil-works/pi-agent-core": "^0.84.1",
     "@earendil-works/pi-ai": "^0.84.1",
     "@earendil-works/pi-coding-agent": "^0.84.1",
-    "@earendil-works/pi-tui": "^0.84.1",
+    "@earendil-works/pi-tui": "^0.85.1",
     "@types/node": "^26.0.0",
     "jiti": "^2.7.0",
     "typebox": "latest",
