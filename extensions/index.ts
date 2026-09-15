@@ -33,6 +33,10 @@ export default function modelFallback(pi: ExtensionAPI) {
   let originalModelKey: string | undefined;
   let activeFallbackKey: string | undefined;
   let lastFallbackReason: string | undefined;
+  // Models already fallen back to during this run (plus the original). A cascade may only
+  // target a model never visited, which makes chains (free → kimi → glm) safe while
+  // preventing A→B→A ping-pong with circular rules.
+  let visitedFallbackKeys = new Set<string>();
 
   function syncPaths(ctx: ExtensionContext): void {
     if (pathsResolvedForCwd === ctx.cwd) return;
@@ -94,15 +98,21 @@ export default function modelFallback(pi: ExtensionAPI) {
       return;
     }
 
+    originalModelKey = modelKey(current);
+    activeFallbackKey = modelRefKey(active.fallback);
+    visitedFallbackKeys = new Set([originalModelKey, activeFallbackKey]);
+    lastFallbackReason = `persistent ${active.status} from ${originalModelKey} until ${active.until}`;
+    updateStatus(ctx);
     const ok = await pi.setModel(fallbackModel);
     if (!ok) {
       ctx.ui.notify(`Model fallback auth unavailable: ${modelRefKey(active.fallback)}`, "warning");
+      originalModelKey = undefined;
+      activeFallbackKey = undefined;
+      lastFallbackReason = undefined;
+      visitedFallbackKeys = new Set();
+      updateStatus(ctx);
       return;
     }
-
-    originalModelKey = modelKey(current);
-    activeFallbackKey = modelRefKey(active.fallback);
-    lastFallbackReason = `persistent ${active.status} from ${originalModelKey} until ${active.until}`;
     updateStatus(ctx);
     ctx.ui.notify(`Model fallback preselected: ${originalModelKey} → ${activeFallbackKey} until ${active.until}.`, "warning");
   }
@@ -112,16 +122,24 @@ export default function modelFallback(pi: ExtensionAPI) {
     if (!loaded) return false;
     const match = findFallback(loaded, { provider: source.provider, id: source.model }, status, reason);
     if (!match) return false;
-    // Only skip when the failing model IS the active fallback (its own failure should not
-    // re-trigger). A failure on the original model while the fallback is merely preselected
-    // must still proceed so auto-retry can run on the fallback.
-    if (activeFallbackKey && modelRefKey(source) === activeFallbackKey) return false;
 
     const fallbackModel = ctx.modelRegistry.find(match.fallback.provider, match.fallback.model);
     if (!fallbackModel) {
       ctx.ui.notify(`Model fallback missing: ${modelRefKey(match.fallback)}`, "warning");
       return false;
     }
+
+    // Loop guard: never fall back to a model already visited this run (the original or an
+    // earlier fallback). This both blocks circular rules from ping-ponging and stops the
+    // current fallback from re-selecting itself, while still allowing onward cascades
+    // (free → kimi → glm) when a different rule matches the fallback's own failure.
+    // Exception: when the failing model is the remembered original and the candidate is the
+    // already-preselected fallback, re-applying the same hop is idempotent and stays allowed
+    // (turn attribution can lag behind the preselection).
+    const fallbackKey = modelRefKey(match.fallback);
+    const sourceKey = modelRefKey(source);
+    const idempotentReapply = fallbackKey === activeFallbackKey && sourceKey === originalModelKey;
+    if (visitedFallbackKeys.has(fallbackKey) && !idempotentReapply) return false;
 
     const now = new Date();
     const until = new Date(now.getTime() + cooldownMsFor(match.rule.cooldownMs, status, headers)).toISOString();
@@ -136,16 +154,29 @@ export default function modelFallback(pi: ExtensionAPI) {
     });
     await writeState(paths.state, state);
 
+    const prevOriginal = originalModelKey;
+    const prevActive = activeFallbackKey;
+    const prevReason = lastFallbackReason;
+    const prevVisited = visitedFallbackKeys;
+    // Mark before setModel so the model_select handler keeps fallback bookkeeping.
+    if (!originalModelKey) originalModelKey = sourceKey;
+    activeFallbackKey = fallbackKey;
+    visitedFallbackKeys = new Set(prevVisited);
+    visitedFallbackKeys.add(sourceKey);
+    visitedFallbackKeys.add(fallbackKey);
+    lastFallbackReason = `${status} from ${sourceKey}${reason ? ` (${reason})` : ""}; persistent until ${until}`;
+    updateStatus(ctx);
+
     const ok = await pi.setModel(fallbackModel);
     if (!ok) {
+      originalModelKey = prevOriginal;
+      activeFallbackKey = prevActive;
+      lastFallbackReason = prevReason;
+      visitedFallbackKeys = prevVisited;
+      updateStatus(ctx);
       ctx.ui.notify(`Model fallback auth unavailable: ${modelRefKey(match.fallback)}`, "warning");
       return false;
     }
-
-    originalModelKey = modelRefKey(source);
-    activeFallbackKey = modelRefKey(match.fallback);
-    lastFallbackReason = `${status} from ${originalModelKey}${reason ? ` (${reason})` : ""}; persistent until ${until}`;
-    updateStatus(ctx);
     ctx.ui.notify(`Model fallback: ${originalModelKey} → ${activeFallbackKey} (${status}). Future sessions preselect fallback until ${until}.`, "warning");
     return true;
   }
@@ -153,6 +184,7 @@ export default function modelFallback(pi: ExtensionAPI) {
   pi.on("agent_start", async (_event, ctx) => {
     await loadConfig(ctx);
     await loadState(ctx);
+    visitedFallbackKeys = new Set();
     await applyPersistentFallback(ctx);
     updateStatus(ctx);
   });
@@ -162,6 +194,7 @@ export default function modelFallback(pi: ExtensionAPI) {
       activeFallbackKey = undefined;
       originalModelKey = undefined;
       lastFallbackReason = undefined;
+      visitedFallbackKeys = new Set();
       updateStatus(ctx);
     }
   });
@@ -171,7 +204,6 @@ export default function modelFallback(pi: ExtensionAPI) {
     const loaded = config ?? (await loadConfig(ctx));
     if (!current || !loaded) return;
     if (event.status >= 200 && event.status < 300) return;
-    if (activeFallbackKey && modelKey(current) === activeFallbackKey) return;
 
     await persistFailure(modelToRef(current), event.status, event.headers, ctx);
   });
@@ -187,7 +219,6 @@ export default function modelFallback(pi: ExtensionAPI) {
     const provider = typeof message.provider === "string" ? message.provider : ctx.model?.provider;
     const model = typeof message.model === "string" ? message.model : ctx.model?.id;
     if (!provider || !model) return;
-    if (activeFallbackKey && `${provider}/${model}` === activeFallbackKey) return;
     const switched = await persistFailure({ provider, model }, status, {}, ctx, reason);
     if (!switched) return;
     const loaded = config;
@@ -217,6 +248,7 @@ export default function modelFallback(pi: ExtensionAPI) {
         ctx.ui.notify("Model fallback: persistent state cleared; no remembered original model.", "info");
         activeFallbackKey = undefined;
         lastFallbackReason = undefined;
+        visitedFallbackKeys = new Set();
         updateStatus(ctx);
         return;
       }
@@ -234,6 +266,7 @@ export default function modelFallback(pi: ExtensionAPI) {
       activeFallbackKey = undefined;
       originalModelKey = undefined;
       lastFallbackReason = undefined;
+      visitedFallbackKeys = new Set();
       updateStatus(ctx);
       ctx.ui.notify(`Model fallback reset: ${modelKey(model)}; persistent state cleared.`, "info");
     },

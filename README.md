@@ -128,6 +128,8 @@ If the package is installed project-locally and the current project references i
 
 Rules never fall back to the failing model itself; a rule whose fallback target equals the failing model is skipped so the next matching rule (or no rule) applies.
 
+Fallback chains cascade: when the active fallback model itself fails, another matching rule may move the session further (for example `free model → kimi-k2.6 → glm-5.3-flash`). A cascade never revisits a model already used in the current run (the original or an earlier fallback), so circular rule configurations cannot ping-pong; when no unvisited target remains, the failure surfaces normally.
+
 ## Development
 
 ```bash
