@@ -14,6 +14,8 @@ export interface FallbackRule {
   matchProviders?: string[];
   matchModels?: ModelRef[];
   statuses?: number[];
+  /** Failure reason codes (for example `context_length_exceeded`); when set, the rule only fires if the parsed reason is listed. */
+  reasons?: string[];
   /** Persistent failover cooldown in milliseconds after a matching failure. Defaults: 429 => 72h, 5xx => 10m. */
   cooldownMs?: number;
   fallback: ModelRef;
@@ -52,6 +54,8 @@ interface NormalizedRuleForWarnings {
   modelKeys: Set<string>;
   models: ModelRef[];
   statuses: Set<number>;
+  /** undefined = the rule matches any failure reason. */
+  reasons?: Set<string>;
 }
 
 export function defaultConfig(): ModelFallbackConfig {
@@ -85,11 +89,19 @@ export function validateConfigShape(value: unknown): ModelFallbackConfig {
   };
 }
 
-export function findFallback(config: ModelFallbackConfig, model: Pick<Model<any>, "provider" | "id">, status: number): MatchedFallback | undefined {
+export function findFallback(
+  config: ModelFallbackConfig,
+  model: Pick<Model<any>, "provider" | "id">,
+  status: number,
+  reason?: string,
+): MatchedFallback | undefined {
   if (!config.enabled) return undefined;
   for (const rule of config.rules) {
     if (!statusesFor(rule).has(status)) continue;
     if (!modelMatches(rule, model)) continue;
+    if (!reasonMatches(rule, reason)) continue;
+    // Never "fall back" to the failing model itself; that would only re-trigger the same failure.
+    if (modelKey(model) === modelRefKey(rule.fallback)) continue;
     return { rule, fallback: rule.fallback };
   }
   return undefined;
@@ -109,17 +121,17 @@ export function analyzeRuleWarnings(config: ModelFallbackConfig): RuleWarning[] 
       const earlierRule = config.rules[earlierIndex];
       const earlier = normalizedRules[earlierIndex];
 
-      if (setsEqual(earlier.statuses, later.statuses) && ruleScopesEqual(earlier, later)) {
+      if (setsEqual(earlier.statuses, later.statuses) && ruleScopesEqual(earlier, later) && reasonsEqual(earlier, later)) {
         warnings.push(duplicateRuleWarning(laterRule, ruleIndex, later, earlierRule, earlierIndex));
         continue rules;
       }
 
-      if (statusSetCovers(earlier.statuses, later.statuses) && ruleScopeCovers(earlier, later)) {
+      if (statusSetCovers(earlier.statuses, later.statuses) && ruleScopeCovers(earlier, later) && reasonsCover(earlier, later)) {
         warnings.push(scopeShadowWarning(laterRule, ruleIndex, later, earlierRule, earlierIndex, earlier));
         continue rules;
       }
 
-      if (earlier.providers.size === 0 || later.models.length === 0 || !statusSetCovers(earlier.statuses, later.statuses)) continue;
+      if (earlier.providers.size === 0 || later.models.length === 0 || !statusSetCovers(earlier.statuses, later.statuses) || !reasonsCover(earlier, later)) continue;
 
       const shadowedModels = later.models.filter((entry) => earlier.providers.has(entry.provider) && !reportedModelShadowKeys.has(modelRefKey(entry)));
       if (shadowedModels.length === 0) continue;
@@ -147,6 +159,7 @@ function validateRule(value: unknown, index: number): FallbackRule {
   if (value.matchProviders !== undefined) rule.matchProviders = readStringArray(value.matchProviders, `rules[${index}].matchProviders`);
   if (value.matchModels !== undefined) rule.matchModels = readModelRefArray(value.matchModels, `rules[${index}].matchModels`);
   if (value.statuses !== undefined) rule.statuses = readStatuses(value.statuses, `rules[${index}].statuses`);
+  if (value.reasons !== undefined) rule.reasons = readStringArray(value.reasons, `rules[${index}].reasons`);
   if (value.cooldownMs !== undefined) rule.cooldownMs = readPositiveInteger(value.cooldownMs, `rules[${index}].cooldownMs`);
   if ((!rule.matchProviders || rule.matchProviders.length === 0) && (!rule.matchModels || rule.matchModels.length === 0)) {
     throw new Error(`rules[${index}] must define matchProviders or matchModels.`);
@@ -160,6 +173,11 @@ function modelMatches(rule: FallbackRule, model: Pick<Model<any>, "provider" | "
   return false;
 }
 
+function reasonMatches(rule: FallbackRule, reason: string | undefined): boolean {
+  if (!rule.reasons || rule.reasons.length === 0) return true;
+  return reason !== undefined && rule.reasons.includes(reason);
+}
+
 function statusesFor(rule: FallbackRule): Set<number> {
   return new Set(rule.statuses && rule.statuses.length > 0 ? rule.statuses : DEFAULT_FALLBACK_STATUSES);
 }
@@ -171,6 +189,7 @@ function normalizeRuleForWarnings(rule: FallbackRule): NormalizedRuleForWarnings
     modelKeys: new Set(modelsByKey.keys()),
     models: [...modelsByKey.values()],
     statuses: statusesFor(rule),
+    reasons: rule.reasons && rule.reasons.length > 0 ? new Set(rule.reasons) : undefined,
   };
 }
 
@@ -247,6 +266,17 @@ function providerModelShadowWarning(
 
 function statusSetCovers(earlier: Set<number>, later: Set<number>): boolean {
   return setCovers(earlier, later);
+}
+
+function reasonsCover(earlier: NormalizedRuleForWarnings, later: NormalizedRuleForWarnings): boolean {
+  if (earlier.reasons === undefined) return true;
+  if (later.reasons === undefined) return false;
+  return setCovers(earlier.reasons, later.reasons);
+}
+
+function reasonsEqual(earlier: NormalizedRuleForWarnings, later: NormalizedRuleForWarnings): boolean {
+  if (earlier.reasons === undefined || later.reasons === undefined) return earlier.reasons === later.reasons;
+  return setsEqual(earlier.reasons, later.reasons);
 }
 
 function setsEqual<T>(left: Set<T>, right: Set<T>): boolean {

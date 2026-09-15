@@ -15,7 +15,7 @@ import {
   type ModelRef,
   type RuleWarning,
 } from "../lib/config.js";
-import { parseStatusFromErrorMessage } from "../lib/error-status.js";
+import { parseReasonFromErrorMessage, parseStatusFromErrorMessage } from "../lib/error-status.js";
 import { emptyState, findActiveStateEntry, pruneExpiredState, readState, upsertStateEntry, validateStateShape, writeState, type FallbackState } from "../lib/state.js";
 import { isRecord } from "../lib/internal.ts";
 import { modelFallbackPaths, readConfig, writeConfig, type ModelFallbackPaths } from "../lib/storage.js";
@@ -107,10 +107,10 @@ export default function modelFallback(pi: ExtensionAPI) {
     ctx.ui.notify(`Model fallback preselected: ${originalModelKey} → ${activeFallbackKey} until ${active.until}.`, "warning");
   }
 
-  async function persistFailure(source: ModelRef, status: number, headers: Record<string, string>, ctx: ExtensionContext): Promise<boolean> {
+  async function persistFailure(source: ModelRef, status: number, headers: Record<string, string>, ctx: ExtensionContext, reason?: string): Promise<boolean> {
     const loaded = config ?? (await loadConfig(ctx));
     if (!loaded) return false;
-    const match = findFallback(loaded, { provider: source.provider, id: source.model }, status);
+    const match = findFallback(loaded, { provider: source.provider, id: source.model }, status, reason);
     if (!match) return false;
     // Only skip when the failing model IS the active fallback (its own failure should not
     // re-trigger). A failure on the original model while the fallback is merely preselected
@@ -144,7 +144,7 @@ export default function modelFallback(pi: ExtensionAPI) {
 
     originalModelKey = modelRefKey(source);
     activeFallbackKey = modelRefKey(match.fallback);
-    lastFallbackReason = `${status} from ${originalModelKey}; persistent until ${until}`;
+    lastFallbackReason = `${status} from ${originalModelKey}${reason ? ` (${reason})` : ""}; persistent until ${until}`;
     updateStatus(ctx);
     ctx.ui.notify(`Model fallback: ${originalModelKey} → ${activeFallbackKey} (${status}). Future sessions preselect fallback until ${until}.`, "warning");
     return true;
@@ -183,11 +183,12 @@ export default function modelFallback(pi: ExtensionAPI) {
     if (!errorMessage) return;
     const status = parseStatusFromErrorMessage(errorMessage);
     if (status === undefined) return;
+    const reason = parseReasonFromErrorMessage(errorMessage);
     const provider = typeof message.provider === "string" ? message.provider : ctx.model?.provider;
     const model = typeof message.model === "string" ? message.model : ctx.model?.id;
     if (!provider || !model) return;
     if (activeFallbackKey && `${provider}/${model}` === activeFallbackKey) return;
-    const switched = await persistFailure({ provider, model }, status, {}, ctx);
+    const switched = await persistFailure({ provider, model }, status, {}, ctx, reason);
     if (!switched) return;
     const loaded = config;
     if (!loaded || loaded.autoRetry === false) return;

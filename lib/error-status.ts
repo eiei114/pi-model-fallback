@@ -1,3 +1,20 @@
+const REASON_TEXT_PATTERNS: Array<[RegExp, string]> = [
+  [/exceeds\s+(?:this|the)\s+model'?s?\s+context\s+length/i, "context_length_exceeded"],
+  [/context[\s_-]*length[\s_-]*exceeded/i, "context_length_exceeded"],
+];
+
+export function parseReasonFromErrorMessage(message: string): string | undefined {
+  // Quoted machine-readable codes relayed by routers, for example
+  // "code":"context_length_exceeded" or "provider_error_code":"context_length_exceeded".
+  // Numeric "code":400 values are ignored; parseStatusFromErrorMessage handles the status.
+  const quoted = message.match(/"(?:[a-z0-9_]+_)?code"\s*:\s*"([a-z0-9_.:-]+)"/i);
+  if (quoted) return quoted[1];
+  for (const [pattern, reason] of REASON_TEXT_PATTERNS) {
+    if (pattern.test(message)) return reason;
+  }
+  return undefined;
+}
+
 export function parseStatusFromErrorMessage(message: string): number | undefined {
   const patterns: RegExp[] = [
     // Leading bare status code, optionally prefixed with "Error:", e.g. "401: {\"type\":\"CreditsError\"...}"
