@@ -32,8 +32,27 @@ test("parseStatusFromErrorMessage extracts statuses behind an Error prefix", () 
   assert.equal(parseStatusFromErrorMessage("ERROR 500: internal server error"), 500);
 });
 
+test("parseStatusFromErrorMessage extracts a status behind an Error prefix without a trailing colon", () => {
+  // GitHub Copilot surfaces quota exhaustion exactly like this. It fell between
+  // two patterns: the leading-bare-status one needs a colon AFTER the number,
+  // and the "error <status>" one needs whitespace directly after "error".
+  assert.equal(parseStatusFromErrorMessage("Error: 429 quota exceeded"), 429);
+  assert.equal(parseStatusFromErrorMessage("error: 503 upstream unavailable"), 503);
+  assert.equal(parseStatusFromErrorMessage("Error 429 quota exceeded"), 429);
+  assert.equal(parseStatusFromErrorMessage("ERROR: 500 something broke"), 500);
+});
+
+test("parseStatusFromErrorMessage extracts a bare status followed by a quota noun", () => {
+  assert.equal(parseStatusFromErrorMessage("429 quota exceeded"), 429);
+  assert.equal(parseStatusFromErrorMessage("403 quota exhausted for this month"), 403);
+});
+
 test("parseStatusFromErrorMessage ignores unrelated 3-digit numbers", () => {
   assert.equal(parseStatusFromErrorMessage("429 tokens remaining in context window"), undefined);
   assert.equal(parseStatusFromErrorMessage("processed 404 items before retry"), undefined);
   assert.equal(parseStatusFromErrorMessage("model returned 200 words of output"), undefined);
+  // The Error-prefix pattern is anchored and requires the word "error", so
+  // prose that merely begins with a status-shaped number stays unmatched.
+  assert.equal(parseStatusFromErrorMessage("429 tokens left before the quota resets"), undefined);
+  assert.equal(parseStatusFromErrorMessage("the 500 most recent errors were summarised"), undefined);
 });
