@@ -20,10 +20,17 @@ export function parseStatusFromErrorMessage(message: string): number | undefined
     // Leading bare status code, optionally prefixed with "Error:", e.g. "401: {\"type\":\"CreditsError\"...}"
     // or "Error: 401: {\"type\":\"CreditsError\"...}" (OpenCode Go, OpenRouter relays)
     /^\s*(?:error\s*:?\s*)?([1-5][0-9]{2})\s*:/i,
+    // Anchored "Error: <status> <prose>", e.g. "Error: 429 quota exceeded"
+    // (GitHub Copilot). The pattern above needs a colon AFTER the status and the
+    // "error <status>" pattern below needs whitespace directly after "error", so
+    // a message carrying both the prefix and a colon fell between them. The
+    // "error" prefix is required: without it this would also match prose such as
+    // "429 tokens remaining in context window", which must stay unmatched.
+    /^\s*error\s*:?\s*([1-5][0-9]{2})\b/i,
     /\b(?:status|code|http)\s*[:\s]?\s*([1-5][0-9]{2})\b/i,
     /\bHTTP\/\d(?:\.\d)?\s+([1-5][0-9]{2})\b/,
     /\b(?:rate[\s-]?limit(?:ed)?|too many requests)[^0-9]{0,40}([45][0-9]{2})\b/i,
-    /\b([45][0-9]{2})\s+(?:error|too many requests|service unavailable|bad gateway|gateway timeout|internal server error)\b/i,
+    /\b([45][0-9]{2})\s+(?:error|quota|too many requests|service unavailable|bad gateway|gateway timeout|internal server error)\b/i,
     /\berror\s+([45][0-9]{2})\b/i,
   ];
 

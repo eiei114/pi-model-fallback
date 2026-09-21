@@ -8,6 +8,11 @@
 - Never fall back to the failing model itself: rules whose fallback target equals the failing model are skipped so the next matching rule applies.
 - Cascading fallback chains: when the active fallback model fails, other matching rules can move the session onward (for example `free → kimi-k2.6 → glm-5.3-flash`). Cascades never revisit a model already used in the current run, so circular rules cannot loop.
 
+### Fixed
+
+- Parse `Error: <status>` messages that carry no colon after the status, such as GitHub Copilot's `Error: 429 quota exceeded`. These fell between the leading-bare-status pattern, which requires a colon after the status, and the `error <status>` pattern, which requires whitespace directly after `error`, so Copilot quota exhaustion never triggered a fallback.
+- Recognise a bare status followed by a quota noun, such as `429 quota exceeded`.
+
 ## [0.4.0] - 2026-09-11
 
 ### Added
