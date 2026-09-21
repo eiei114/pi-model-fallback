@@ -7,10 +7,11 @@ const contributingMd = await readFile(new URL("../CONTRIBUTING.md", import.meta.
 const changelogMd = await readFile(new URL("../CHANGELOG.md", import.meta.url), "utf8");
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
-test("usage docs avoid stale version-specific replay wording", () => {
+test("usage docs describe the current retry behavior", () => {
   assert.doesNotMatch(usageMd, /v0\.1\.0/);
   assert.doesNotMatch(usageMd, /replayed in v\d/i);
-  assert.match(usageMd, /not automatically replayed/i);
+  assert.match(usageMd, /automatically queued once/i);
+  assert.match(usageMd, /autoRetry.*false/i);
 });
 
 function parseChangelogSections(markdown) {
