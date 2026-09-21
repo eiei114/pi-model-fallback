@@ -97,7 +97,7 @@ Rule fields:
 Top-level fields:
 
 - `enabled`: toggle the extension without deleting rules
-- `autoRetry`: when a fallback fires from a failed turn, automatically re-queue the failed user prompt so the turn retries on the fallback model (defaults to `true`; set to `false` to only switch models)
+- `autoRetry`: when a fallback fires from a failed turn, automatically re-queue the failed user prompt so the turn retries on the fallback model (defaults to `true`; set to `false` to only switch models). The failed prompt is queued once, not retried indefinitely.
 
 Rules use first-match order: the first rule whose provider/model and status match wins. Put specific `matchModels` rules before broad `matchProviders` rules when they should take priority. `model_fallback_config validate`, `save`, `read`, and `status` report warning-only diagnostics when a later rule or model entry is completely shadowed by an earlier rule; `/model-fallback:status` also includes a concise warning summary for the current config. Warning-bearing config remains valid and can still be saved.
 
@@ -124,7 +124,7 @@ If the package is installed project-locally and the current project references i
 - Successful responses do nothing.
 - Matching failures from `after_provider_response` can trigger fallback immediately.
 - Assistant error messages parsed at `turn_end` can also persist fallback state for SDK/provider failures that do not emit the normal response hook. Status extraction looks for HTTP-style tokens (for example `status 429`, `HTTP 503`, or `rate limit`) rather than any bare 3-digit number in the message.
-- The failed request is not automatically replayed.
+- With the default `autoRetry: true`, the failed prompt is automatically queued once on the fallback model. Set `autoRetry: false` to switch models without replaying it.
 
 Rules never fall back to the failing model itself; a rule whose fallback target equals the failing model is skipped so the next matching rule (or no rule) applies.
 
