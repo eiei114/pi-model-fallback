@@ -142,3 +142,68 @@ test("rule warning analysis does not change first-match fallback order", () => {
   assert.equal(analyzeRuleWarnings(config).length, 1);
   assert.deepEqual(findFallback(config, { provider: "zai", id: "glm-4.7" }, 429)?.fallback, fallback);
 });
+
+test("reason-scoped rule fires only for the listed reason", () => {
+  const config = warningConfig([
+    {
+      name: "context-overflow",
+      matchProviders: ["openrouter"],
+      statuses: [400],
+      reasons: ["context_length_exceeded"],
+      fallback: { provider: "openrouter", model: "z-ai/glm-5.3-flash" },
+    },
+  ]);
+
+  const model = { provider: "openrouter", id: "nex-agi/nex-n2.5-mini:free" };
+  assert.deepEqual(findFallback(config, model, 400, "context_length_exceeded")?.fallback, { provider: "openrouter", model: "z-ai/glm-5.3-flash" });
+  assert.equal(findFallback(config, model, 400, "insufficient_quota"), undefined);
+  assert.equal(findFallback(config, model, 400), undefined);
+  assert.equal(findFallback(config, model, 429, "context_length_exceeded"), undefined);
+});
+
+test("rules without reasons still match when a reason is parsed", () => {
+  const config = warningConfig([{ matchProviders: ["zai"], fallback }]);
+  assert.deepEqual(findFallback(config, { provider: "zai", id: "glm-4.7" }, 429, "rate_limited")?.fallback, fallback);
+});
+
+test("findFallback never targets the failing model itself", () => {
+  const config = warningConfig([
+    { name: "broad-openrouter", matchProviders: ["openrouter"], fallback: { provider: "openrouter", model: "z-ai/glm-5.3-flash" } },
+  ]);
+
+  assert.equal(findFallback(config, { provider: "openrouter", id: "z-ai/glm-5.3-flash" }, 429), undefined);
+  assert.deepEqual(findFallback(config, { provider: "openrouter", id: "nex-agi/nex-n2.5-mini:free" }, 429)?.fallback, { provider: "openrouter", model: "z-ai/glm-5.3-flash" });
+});
+
+test("rules with disjoint reasons on the same scope are not reported as shadowed", () => {
+  const config = warningConfig([
+    { name: "other-400s", matchProviders: ["zai"], statuses: [400], reasons: ["insufficient_quota"], fallback: { provider: "openai", model: "gpt-4.1-mini" } },
+    { name: "context-400s", matchProviders: ["zai"], statuses: [400], reasons: ["context_length_exceeded"], fallback: { provider: "openai", model: "gpt-4.1" } },
+  ]);
+
+  assert.equal(analyzeRuleWarnings(config).length, 0);
+});
+
+test("unrestricted earlier rule still shadows a later reason-scoped rule", () => {
+  const config = warningConfig([
+    { name: "broad", matchProviders: ["zai"], statuses: [400], fallback: { provider: "openai", model: "gpt-4.1-mini" } },
+    { name: "scoped", matchProviders: ["zai"], statuses: [400], reasons: ["context_length_exceeded"], fallback: { provider: "openai", model: "gpt-4.1" } },
+  ]);
+
+  const warnings = analyzeRuleWarnings(config);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].code, "shadowed_rule");
+});
+
+test("config validation accepts reasons and rejects invalid entries", () => {
+  const config = validateConfigShape({
+    version: 1,
+    enabled: true,
+    rules: [{ matchProviders: ["zai"], reasons: ["context_length_exceeded"], fallback }],
+  });
+  assert.deepEqual(config.rules[0].reasons, ["context_length_exceeded"]);
+  assert.throws(
+    () => validateConfigShape({ version: 1, enabled: true, rules: [{ matchProviders: ["zai"], reasons: [], fallback }] }),
+    /must not be empty/,
+  );
+});

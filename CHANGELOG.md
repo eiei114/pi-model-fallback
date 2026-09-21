@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- `reasons` rule option: match optional failure reason codes (for example `context_length_exceeded`) parsed from provider error messages, so status codes like `400` can trigger fallback only for specific causes such as context-length overflow. Reason-aware rules participate in shadowing analysis, and unrestricted earlier rules still shadow later reason-scoped rules.
+- Never fall back to the failing model itself: rules whose fallback target equals the failing model are skipped so the next matching rule applies.
+- Cascading fallback chains: when the active fallback model fails, other matching rules can move the session onward (for example `free → kimi-k2.6 → glm-5.3-flash`). Cascades never revisit a model already used in the current run, so circular rules cannot loop.
+
 ## [0.4.0] - 2026-09-11
 
 ### Added

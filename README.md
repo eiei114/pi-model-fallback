@@ -90,6 +90,7 @@ Rule fields:
 - `matchProviders`: match all models from a provider
 - `matchModels`: match specific `provider` + `model` pairs
 - `statuses`: optional; defaults to `429, 500, 502, 503, 504`
+- `reasons`: optional list of failure reason codes (for example `context_length_exceeded`); when set, the rule only fires if the parsed failure reason is listed. Reasons come from quoted machine codes in the error message (for example `"provider_error_code":"context_length_exceeded"`) or prose such as `exceeds this model's context length`. Useful for status codes like `400` that should only trigger a fallback for specific causes, such as context-length overflow.
 - `cooldownMs`: optional persistent fallback window
 - `fallback`: target model Pi should switch to
 
@@ -124,6 +125,10 @@ If the package is installed project-locally and the current project references i
 - Matching failures from `after_provider_response` can trigger fallback immediately.
 - Assistant error messages parsed at `turn_end` can also persist fallback state for SDK/provider failures that do not emit the normal response hook. Status extraction looks for HTTP-style tokens (for example `status 429`, `HTTP 503`, or `rate limit`) rather than any bare 3-digit number in the message.
 - The failed request is not automatically replayed.
+
+Rules never fall back to the failing model itself; a rule whose fallback target equals the failing model is skipped so the next matching rule (or no rule) applies.
+
+Fallback chains cascade: when the active fallback model itself fails, another matching rule may move the session further (for example `free model → kimi-k2.6 → glm-5.3-flash`). A cascade never revisits a model already used in the current run (the original or an earlier fallback), so circular rule configurations cannot ping-pong; when no unvisited target remains, the failure surfaces normally.
 
 ## Development
 
