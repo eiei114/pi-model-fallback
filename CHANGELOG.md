@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.5.0] - 2026-09-22
+
 ### Added
 
 - `reasons` rule option: match optional failure reason codes (for example `context_length_exceeded`) parsed from provider error messages, so status codes like `400` can trigger fallback only for specific causes such as context-length overflow. Reason-aware rules participate in shadowing analysis, and unrestricted earlier rules still shadow later reason-scoped rules.
@@ -12,6 +14,11 @@
 
 - Parse `Error: <status>` messages that carry no colon after the status, such as GitHub Copilot's `Error: 429 quota exceeded`. These fell between the leading-bare-status pattern, which requires a colon after the status, and the `error <status>` pattern, which requires whitespace directly after `error`, so Copilot quota exhaustion never triggered a fallback.
 - Recognise a bare status followed by a quota noun, such as `429 quota exceeded`.
+
+### Changed
+
+- Bump Pi dev dependencies to `@earendil-works/*` 0.86.1 and `@types/node` 26.5.1.
+- Refresh the fallback retry example in the README and usage docs.
 
 ## [0.4.0] - 2026-09-11
 
