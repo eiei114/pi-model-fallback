@@ -6,7 +6,7 @@ Install:
 pi install npm:pi-model-fallback
 ```
 
-Default behavior: when a `zai/*` model receives `429`, `500`, `502`, `503`, or `504`, Pi switches to `deepseek/deepseek-v4-flash` for the next prompt. The failed prompt is automatically queued once on the fallback model; set `"autoRetry": false` in `model-fallback/config.json` to switch models without retrying it.
+Default behavior: when a `zai/*` model receives `429`, `500`, `502`, `503`, or `504`, Pi switches to `deepseek/deepseek-v4-flash` for the next prompt. The failed prompt is automatically queued once per fallback transition on the fallback model, so a fallback chain may replay it more than once; set `"autoRetry": false` in `model-fallback/config.json` to switch models without retrying it.
 
 Commands:
 
