@@ -15,7 +15,30 @@ export function parseReasonFromErrorMessage(message: string): string | undefined
   return undefined;
 }
 
+// Failure modes where the transport reports HTTP success but the provider
+// yields nothing usable — no numeric status is present in any of them, so the
+// status parser must synthesize one for the fallback rules to fire:
+// - "Provider returned an empty response" (OpenRouter stealth/pool models)
+// - "Stream ended without finish_reason" (chunk stream truncated mid-flight)
+// - "<provider> response has no body" (Anthropic/Mistral/generic, 200 empty body)
+// - "<provider> stream ended without a terminal event" (SSE stream dies silently)
+const EMPTY_PROVIDER_RESPONSE_PATTERNS: RegExp[] = [
+  /provider returned an empty response/i,
+  /response (has|with) no body/i,
+  /stream ended without a terminal event/i,
+  /stream ended without finish_reason/i,
+];
+
 export function parseStatusFromErrorMessage(message: string): number | undefined {
+  for (const pattern of EMPTY_PROVIDER_RESPONSE_PATTERNS) {
+    if (pattern.test(message)) {
+      // Synthesize 502 so status-based fallback rules fire instead of the
+      // agent silently retrying the same model. 502 is deliberately chosen
+      // over a novel code: it lands in the 5xx status lists users already
+      // configure and inherits the standard 10-minute cooldown.
+      return 502;
+    }
+  }
   const patterns: RegExp[] = [
     // Leading bare status code, optionally prefixed with "Error:", e.g. "401: {\"type\":\"CreditsError\"...}"
     // or "Error: 401: {\"type\":\"CreditsError\"...}" (OpenCode Go, OpenRouter relays)

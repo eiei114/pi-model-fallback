@@ -47,6 +47,25 @@ test("parseStatusFromErrorMessage extracts a bare status followed by a quota nou
   assert.equal(parseStatusFromErrorMessage("403 quota exhausted for this month"), 403);
 });
 
+test("parseStatusFromErrorMessage synthesizes 502 for empty-provider responses", () => {
+  // Providers can complete the HTTP request with 200 but deliver nothing —
+  // empty stream, empty body, or a truncated SSE stream. The harness surfaces
+  // these with distinct literal texts and no numeric status. Without the
+  // synthesis the agent retries the same dead model.
+  assert.equal(parseStatusFromErrorMessage("Provider returned an empty response"), 502);
+  assert.equal(parseStatusFromErrorMessage("provider returned an empty response after 30s"), 502);
+  assert.equal(parseStatusFromErrorMessage("Stream ended without finish_reason"), 502);
+  assert.equal(parseStatusFromErrorMessage("openrouter response has no body"), 502);
+  assert.equal(parseStatusFromErrorMessage("Attempted to iterate over an Anthropic response with no body"), 502);
+  assert.equal(parseStatusFromErrorMessage("Mistral response has no body"), 502);
+  assert.equal(parseStatusFromErrorMessage("openrouter stream ended without a terminal event"), 502);
+  // Refusals and user-initiated aborts must NOT trigger fallback.
+  assert.equal(parseStatusFromErrorMessage("Provider finish_reason: content_filter"), undefined);
+  assert.equal(parseStatusFromErrorMessage("Request was aborted"), undefined);
+  // Prose containing neither the phrase nor a status stays unmatched.
+  assert.equal(parseStatusFromErrorMessage("429 tokens remaining in context window"), undefined);
+});
+
 test("parseStatusFromErrorMessage ignores unrelated 3-digit numbers", () => {
   assert.equal(parseStatusFromErrorMessage("429 tokens remaining in context window"), undefined);
   assert.equal(parseStatusFromErrorMessage("processed 404 items before retry"), undefined);
