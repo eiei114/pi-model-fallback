@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [0.5.1] - 2026-09-30
+
+### Changed
+
+- Update `@earendil-works/pi-*` dependencies to `0.99.1`.
+
 ## [0.5.0] - 2026-09-22
 
 ### Added
