@@ -51,6 +51,13 @@ export function parseStatusFromErrorMessage(message: string): number | undefined
     // "429 tokens remaining in context window", which must stay unmatched.
     /^\s*error\s*:?\s*([1-5][0-9]{2})\b/i,
     /\b(?:status|code|http)\s*[:\s]?\s*([1-5][0-9]{2})\b/i,
+    // Parenthesized status inside a provider error wrapper, e.g.
+    // "omni API error (503): overloaded" or "chat_completion_error (429): ...".
+    // Without this the wrapper text sits between "error" and the number, so the
+    // anchored "error <status>" pattern cannot see it and the rule set never
+    // sees a status at all. The wrapper keyword and the parentheses are both
+    // required so prose such as "(503) items processed" stays unmatched.
+    /\b\w*(?:error|failure|failed)\s*\(\s*([1-5][0-9]{2})\s*\)/i,
     /\bHTTP\/\d(?:\.\d)?\s+([1-5][0-9]{2})\b/,
     /\b(?:rate[\s-]?limit(?:ed)?|too many requests)[^0-9]{0,40}([45][0-9]{2})\b/i,
     /\b([45][0-9]{2})\s+(?:error|quota|too many requests|service unavailable|bad gateway|gateway timeout|internal server error)\b/i,

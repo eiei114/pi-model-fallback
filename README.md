@@ -123,7 +123,7 @@ If the package is installed project-locally and the current project references i
 
 - Successful responses do nothing.
 - Matching failures from `after_provider_response` can trigger fallback immediately.
-- Assistant error messages parsed at `turn_end` can also persist fallback state for SDK/provider failures that do not emit the normal response hook. Status extraction looks for HTTP-style tokens (for example `status 429`, `HTTP 503`, or `rate limit`) rather than any bare 3-digit number in the message.
+- Assistant error messages parsed at `turn_end` can also persist fallback state for SDK/provider failures that do not emit the normal response hook. Status extraction looks for HTTP-style tokens (for example `status 429`, `HTTP 503`, or `rate limit`) rather than any bare 3-digit number in the message. A status in parentheses is only recognized when an error wrapper keyword precedes it, as in `omni API error (503): ...`; a parenthesized number with no such wrapper, such as `(503) items processed`, stays unmatched.
 - With the default `autoRetry: true`, the failed prompt is automatically queued once per fallback transition on the fallback model. A fallback chain may therefore replay the prompt more than once. Set `autoRetry: false` to switch models without replaying it.
 
 Rules never fall back to the failing model itself; a rule whose fallback target equals the failing model is skipped so the next matching rule (or no rule) applies.

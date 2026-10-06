@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Recognize a status in parentheses when a provider error wrapper precedes it, for example `omni API error (503): ...`. Previously such messages yielded no status, so rules listing `503` were never evaluated even when configured.
+
 ## [0.5.1] - 2026-09-30
 
 ### Changed
