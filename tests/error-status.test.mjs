@@ -76,6 +76,22 @@ test("parseStatusFromErrorMessage ignores unrelated 3-digit numbers", () => {
   assert.equal(parseStatusFromErrorMessage("the 500 most recent errors were summarised"), undefined);
 });
 
+test("parseStatusFromErrorMessage extracts a parenthesized status inside an error wrapper", () => {
+  // Provider wrappers place the status between parentheses with the wrapper text
+  // in between, so both the anchored leading-status pattern and the
+  // "error <status>" pattern miss it and no rule ever sees a status.
+  assert.equal(parseStatusFromErrorMessage("omni API error (503): overloaded"), 503);
+  assert.equal(parseStatusFromErrorMessage("omni API error (503): service temporarily unavailable"), 503);
+  assert.equal(parseStatusFromErrorMessage("omni API error (500): internal error"), 500);
+  assert.equal(parseStatusFromErrorMessage("chat_completion_error (429): rate limited"), 429);
+  assert.equal(parseStatusFromErrorMessage("upstream_failure (502)"), 502);
+  assert.equal(parseStatusFromErrorMessage("omni API error (503):"), 503);
+  // Parentheses without the error/failure wrapper must not be treated as a status.
+  assert.equal(parseStatusFromErrorMessage("(503) items processed"), undefined);
+  assert.equal(parseStatusFromErrorMessage("(5 o3) malformed"), undefined);
+  assert.equal(parseStatusFromErrorMessage("(50300) processed"), undefined);
+});
+
 test("parseReasonFromErrorMessage extracts quoted provider error codes", () => {
   assert.equal(
     parseReasonFromErrorMessage(
