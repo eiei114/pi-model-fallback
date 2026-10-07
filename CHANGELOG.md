@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [0.5.2] - 2026-10-07
+
+### Changed
+
+- Update `@earendil-works/pi-*` development dependencies to `1.0.4`.
+
 ### Fixed
 
 - Recognize a status in parentheses when a provider error wrapper precedes it, for example `omni API error (503): ...`. Previously such messages yielded no status, so rules listing `503` were never evaluated even when configured.
