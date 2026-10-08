@@ -10,7 +10,7 @@ const packageJson = JSON.parse(await readFile(new URL("../package.json", import.
 test("usage docs describe the current retry behavior", () => {
   assert.doesNotMatch(usageMd, /v0\.1\.0/);
   assert.doesNotMatch(usageMd, /replayed in v\d/i);
-  assert.match(usageMd, /automatically queued once/i);
+  assert.match(usageMd, /automatically retries the failed prompt once/i);
   assert.match(usageMd, /autoRetry.*false/i);
 });
 
