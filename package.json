@@ -1,6 +1,6 @@
 {
   "name": "pi-model-fallback",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Pi extension that switches to a fallback model after provider failures such as 429 rate limits.",
   "type": "module",
   "license": "MIT",
@@ -31,7 +31,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
-    "ci": "npm run typecheck && npm test && npm run pack:check",
+    "smoke:pi": "node scripts/pi-sdk-smoke.mjs",
+    "ci": "npm run typecheck && npm test && npm run smoke:pi && npm run pack:check",
     "pack:check": "npm pack --dry-run"
   },
   "pi": {
@@ -50,10 +51,10 @@
     "typebox": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "^1.1.0",
-    "@earendil-works/pi-ai": "^1.1.0",
-    "@earendil-works/pi-coding-agent": "^1.1.0",
-    "@earendil-works/pi-tui": "^1.1.0",
+    "@earendil-works/pi-agent-core": "1.2.0",
+    "@earendil-works/pi-ai": "1.2.0",
+    "@earendil-works/pi-coding-agent": "1.2.0",
+    "@earendil-works/pi-tui": "1.2.0",
     "@types/node": "^26.6.3",
     "jiti": "^2.7.0",
     "typebox": "latest",

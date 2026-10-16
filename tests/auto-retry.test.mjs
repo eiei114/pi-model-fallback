@@ -54,7 +54,7 @@ async function createHarness({ rules = [rule(SOURCE, FALLBACK)], autoRetry = tru
   };
   modelFallback(pi);
   await handlers.get("session_start")?.({}, ctx);
-  async function start() { await handlers.get("before_agent_start")?.({ prompt: "finish the existing work" }, ctx); }
+  async function start() { await handlers.get("before_agent_start")?.({ messageType: "user", prompt: "finish the existing work" }, ctx); }
   await start();
   async function fail(errorMessage = "Error: 429 quota exceeded") {
     const message = { role: "assistant", provider: ctx.model.provider, model: ctx.model.id, stopReason: "error", errorMessage, content: [] };
