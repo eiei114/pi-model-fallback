@@ -21,22 +21,15 @@ test("package uses public publish config", () => {
   assert.equal(packageJson.publishConfig.access, "public");
 });
 
-test("pi devDependencies stay on the same release line", () => {
-  const requiredPiPackages = [
-    "@earendil-works/pi-agent-core",
-    "@earendil-works/pi-ai",
-    "@earendil-works/pi-coding-agent",
-    "@earendil-works/pi-tui",
-  ];
+test("Pi SDK devDependencies are pinned to the verified 1.2.0 wave", () => {
+  const expected = {
+    "@earendil-works/pi-agent-core": "1.2.0",
+    "@earendil-works/pi-ai": "1.2.0",
+    "@earendil-works/pi-coding-agent": "1.2.0",
+    "@earendil-works/pi-tui": "1.2.0",
+  };
 
-  const piVersions = requiredPiPackages.map((name) => {
-    const version = packageJson.devDependencies?.[name];
-    assert.ok(version, `missing devDependency ${name}`);
-    return version.replace(/^[~^]/, "");
-  });
-
-  assert.ok(
-    piVersions.every((version) => version === piVersions[0]),
-    `pi devDependencies should share one version line, got: ${requiredPiPackages.map((name, index) => `${name}@${piVersions[index]}`).join(", ")}`,
-  );
+  for (const [name, version] of Object.entries(expected)) {
+    assert.equal(packageJson.devDependencies?.[name], version, `${name} must be an exact 1.2.0 dev/test pin`);
+  }
 });

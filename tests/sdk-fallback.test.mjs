@@ -173,11 +173,11 @@ test("interrupt during persistent preselection prevents the initial inference", 
   };
   const prompting = h.session.prompt("Cancel before the request starts.");
   await Promise.race([reached, prompting.then(() => { throw new Error("preselection was not reached"); })]);
-  assert.equal(h.session.isStreaming, false);
+  assert.equal(h.session.isIdle, false);
   h.interrupt();
-  await h.session.abort();
+  const aborting = h.session.abort();
   release();
-  await prompting;
+  await Promise.all([prompting, aborting]);
   assert.equal(h.source.state.callCount, 0);
   assert.equal(h.target.state.callCount, 0);
   assert.equal(h.session.isIdle, true);
