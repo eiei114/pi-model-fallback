@@ -30,7 +30,7 @@ jobs:
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           TAG="v${CURRENT_VERSION}"
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | head -1)
+          PREVIOUS_TAG=$(node .github/scripts/latest-stable-tag.mjs)
 
           if [ -n "$PREVIOUS_TAG" ] && ! git cat-file -e "${PREVIOUS_TAG}:package.json" 2>/dev/null; then
             echo "The latest release tag has no package.json; skipping release."
@@ -69,7 +69,7 @@ jobs:
         shell: bash
         run: |
           TAG="${{ steps.check.outputs.tag }}"
-          PREV_TAG=$(git tag --sort=-version:refname | head -1)
+          PREV_TAG=$(node .github/scripts/latest-stable-tag.mjs)
           if [ -n "$PREV_TAG" ]; then
             NOTES=$(printf 'Released %s.\n\n**Full Changelog**: https://github.com/%s/compare/%s...%s' "$TAG" "${{ github.repository }}" "$PREV_TAG" "$TAG")
           else
