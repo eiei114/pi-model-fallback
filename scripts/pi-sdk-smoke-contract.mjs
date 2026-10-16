@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 export const VERIFICATION_CONTRACT = "pi-sdk-behavior-v2";
 export const SDK_VERSIONS = Object.freeze({
   "@earendil-works/pi-agent-core": "1.2.0",
@@ -5,6 +7,11 @@ export const SDK_VERSIONS = Object.freeze({
   "@earendil-works/pi-coding-agent": "1.2.0",
   "@earendil-works/pi-tui": "1.2.0",
 });
+const COMMITTED_REPORT_PATH = "docs/verification/pi-sdk-smoke.json";
+
+export function smokeReportPath(root, record = false) {
+  return resolve(root, record ? COMMITTED_REPORT_PATH : "tmp/pi-sdk-smoke.json");
+}
 
 export const UNHANDLED_ERROR_PATTERN = /unhandled promise rejection|uncaught (?:exception|error)|shutdown(?: error| failed)|error while shutting down/i;
 export const EXTENSION_LOAD_ERROR_PATTERN = /failed to load extension|error loading extension|extension load error/i;

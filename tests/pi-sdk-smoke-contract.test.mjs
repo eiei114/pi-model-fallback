@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 import test from "node:test";
-import { behaviorAssertions, parseJsonLines, SDK_VERSIONS, VERIFICATION_CONTRACT } from "../scripts/pi-sdk-smoke-contract.mjs";
+import { behaviorAssertions, parseJsonLines, SDK_VERSIONS, smokeReportPath, VERIFICATION_CONTRACT } from "../scripts/pi-sdk-smoke-contract.mjs";
+
+const root = resolve(import.meta.dirname, "..");
 
 const response = (id, disposition = "handled") => ({ type: "response", id, command: "prompt", success: true, data: { disposition } });
 const notify = (message) => ({ type: "extension_ui_request", method: "notify", message });
@@ -15,6 +19,17 @@ test("Pi SDK behavior contract parses JSONL and pins the frozen versions", () =>
     "@earendil-works/pi-coding-agent": "1.2.0",
     "@earendil-works/pi-tui": "1.2.0",
   });
+});
+
+test("normal smoke output is ignored and recording explicitly targets the committed report", () => {
+  const committedReportPath = resolve(root, "docs/verification/pi-sdk-smoke.json");
+  const normalReportPath = smokeReportPath(root);
+  const ignoreCheck = spawnSync("git", ["check-ignore", "--quiet", "--", normalReportPath], { cwd: root });
+
+  assert.equal(normalReportPath, resolve(root, "tmp/pi-sdk-smoke.json"));
+  assert.equal(smokeReportPath(root, true), committedReportPath);
+  assert.notEqual(normalReportPath, committedReportPath);
+  assert.equal(ignoreCheck.status, 0, ignoreCheck.error?.message ?? "normal smoke output must be git-ignored");
 });
 
 test("extension registration and handled error assertions reject missing behavior", () => {

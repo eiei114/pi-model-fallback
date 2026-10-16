@@ -9,11 +9,15 @@ import {
   SDK_VERSIONS,
   UNHANDLED_ERROR_PATTERN,
   VERIFICATION_CONTRACT,
+  smokeReportPath,
 } from "./pi-sdk-smoke-contract.mjs";
 
 const PROBE_TIMEOUT_MS = 15_000;
 const root = resolve(import.meta.dirname, "..");
-const reportPath = resolve(root, "docs/verification/pi-sdk-smoke.json");
+const recordReport = process.argv.includes("--record");
+const committedReportPath = smokeReportPath(root, true);
+const reportPath = smokeReportPath(root, recordReport);
+const committedReportBefore = recordReport ? null : readFileSync(committedReportPath);
 const fixturePath = resolve(root, "tests/fixtures/pi-sdk-smoke-provider.mjs");
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const packageJson = readJson(resolve(root, "package.json"));
@@ -324,6 +328,9 @@ const report = {
 };
 mkdirSync(dirname(reportPath), { recursive: true });
 writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+if (!recordReport && !readFileSync(committedReportPath).equals(committedReportBefore)) {
+  throw new Error("Normal Pi smoke runs must preserve the committed verification report");
+}
 console.log(JSON.stringify({ verification_contract: VERIFICATION_CONTRACT, platform: process.platform,
   cases: cases.map(({ name, passed, exit_code }) => ({ name, passed, exit_code })) }));
 if (cases.some((item) => !item.passed) || report.unhandled_errors !== 0 || report.extension_load_errors !== 0) process.exitCode = 1;
