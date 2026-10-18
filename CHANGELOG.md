@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Serialize cooldown read-modify-write transactions across sessions and processes, publish state atomically, and coordinate reset and expiry pruning so cached snapshots cannot discard or resurrect other sessions' entries.
+
 ## [0.5.4] - 2026-10-16
 
 ### Changed

@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -17,7 +16,7 @@ import {
   type RuleWarning,
 } from "../lib/config.js";
 import { parseReasonFromErrorMessage, parseStatusFromErrorMessage } from "../lib/error-status.js";
-import { emptyState, findActiveStateEntry, pruneExpiredState, readState, upsertStateEntry, validateStateShape, writeState, type FallbackState } from "../lib/state.js";
+import { findActiveStateEntry, readState, updateState, upsertStateEntry, writeState, type FallbackState } from "../lib/state.js";
 import { isRecord } from "../lib/internal.ts";
 import { modelFallbackPaths, readConfig, writeConfig, type ModelFallbackPaths } from "../lib/storage.js";
 
@@ -98,18 +97,9 @@ export default function modelFallback(pi: ExtensionAPI) {
   async function loadState(ctx: ExtensionContext): Promise<FallbackState | undefined> {
     try {
       syncPaths(ctx);
-      const statePath = paths.state;
-      if (!existsSync(statePath)) {
-        state = emptyState();
-        return state;
-      }
-
-      const before = validateStateShape(JSON.parse(await readFile(statePath, "utf8")));
-      const after = pruneExpiredState(before);
-      state = after;
-      if (JSON.stringify(before) !== JSON.stringify(after)) {
-        await writeState(statePath, after);
-      }
+      // Prune the snapshot for selection, but never write a stale read back over another session.
+      // Mutating transactions prune the current on-disk state while holding the state lock.
+      state = await readState(paths.state);
       return state;
     } catch (error) {
       ctx.ui.notify(`Model fallback state error: ${errorMessage(error)}`, "warning");
@@ -210,10 +200,11 @@ export default function modelFallback(pi: ExtensionAPI) {
       if (!ok) ctx.ui.notify(`Model fallback auth unavailable: ${modelRefKey(match.fallback)}`, "warning");
       return false;
     }
-    const loadedState = state ?? (await loadState(ctx)) ?? emptyState();
     if (isCancelled()) return false;
-    state = upsertStateEntry(loadedState, { source, fallback: match.fallback, status, until, createdAt: now.toISOString(), ruleName: match.rule.name });
-    await writeState(paths.state, state);
+    state = await updateState(paths.state, (current) => isCancelled() ? current : upsertStateEntry(current, {
+      source, fallback: match.fallback, status, until, createdAt: now.toISOString(), ruleName: match.rule.name,
+    }));
+    if (isCancelled()) return false;
     ctx.ui.notify(`Model fallback: ${sourceKey} → ${activeFallbackKey} (${status}). Future sessions preselect fallback until ${until}.`, "warning");
     return true;
   }
