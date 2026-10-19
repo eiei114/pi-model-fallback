@@ -1,6 +1,10 @@
 name: Auto Release
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
   workflow_dispatch:
     inputs:
       release_authorized:
@@ -16,7 +20,9 @@ permissions:
 jobs:
   release:
     name: Create release for new version
-    if: github.ref == 'refs/heads/main' && inputs.release_authorized == true
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (inputs.release_authorized == true || github.event_name == 'push')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
