@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.6] - 2026-10-19
+
+### Fixed
+
+- Restore automatic releases on a `package.json` version bump pushed to `main`; the manual **Auto Release** dispatch stays available with `release_authorized` checked.
+
 ## [0.5.5] - 2026-10-19
 
 ### Fixed
