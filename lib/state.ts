@@ -1,9 +1,14 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, realpath, rename, rm } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import lockfile from "proper-lockfile";
 import { modelRefKey, type ModelRef } from "./config.ts";
-import { isRecord, readJsonIfExists, readModelRef, readNonEmptyString } from "./internal.ts";
+import { isNodeError, isRecord, readJsonIfExists, readModelRef, readNonEmptyString } from "./internal.ts";
 
 export const STATE_VERSION = 1;
+const WINDOWS_RENAME_RETRY_MS = 1000;
+const WINDOWS_RENAME_RETRY_CODES = new Set(["EACCES", "EBUSY", "EPERM"]);
 
 export interface FallbackStateEntry {
   source: ModelRef;
@@ -30,8 +35,75 @@ export async function readState(path: string, now = new Date()): Promise<Fallbac
 }
 
 export async function writeState(path: string, state: FallbackState): Promise<void> {
+  const next = validateStateShape(state);
+  // Explicit replacement (notably reset) must also be able to repair a corrupt old file.
+  await withStateLock(path, (target, checkLock) => publishState(target, next, checkLock));
+}
+
+/** Serialize the entire read/modify/publish transaction, including across Pi processes. */
+export async function updateState(path: string, update: (current: FallbackState) => FallbackState): Promise<FallbackState> {
+  return withStateLock(path, async (target, checkLock) => {
+    const next = validateStateShape(update(await readState(target)));
+    checkLock();
+    await publishState(target, next, checkLock);
+    return next;
+  });
+}
+
+async function withStateLock<T>(path: string, operation: (target: string, checkLock: () => void) => Promise<T>): Promise<T> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(validateStateShape(state), null, 2)}\n`, "utf8");
+  // Aliases of the same agent directory must share a lock (the state file may not exist yet).
+  const target = join(await realpath(dirname(path)), basename(path));
+  let compromised: Error | undefined;
+  const release = await lockfile.lock(target, {
+    realpath: false,
+    retries: { retries: 100, factor: 1, minTimeout: 20, maxTimeout: 20, randomize: false },
+    onCompromised: (error) => { compromised = error; },
+  });
+  const checkLock = () => { if (compromised) throw compromised; };
+  try {
+    checkLock();
+    return await operation(target, checkLock);
+  } finally {
+    await release();
+  }
+}
+
+async function publishState(path: string, state: FallbackState, checkLock: () => void): Promise<void> {
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  let created = false;
+  try {
+    const file = await open(temporary, "wx", 0o600);
+    created = true;
+    try {
+      await file.writeFile(`${JSON.stringify(state, null, 2)}\n`, "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    // Readers see either the old complete document or the new one, never a partial write.
+    checkLock();
+    await replaceStateFile(temporary, path, checkLock);
+  } finally {
+    if (created) await rm(temporary, { force: true });
+  }
+}
+
+async function replaceStateFile(source: string, target: string, checkLock: () => void): Promise<void> {
+  // Windows can reject replacement while an unlocked reader briefly has the target open.
+  const deadline = Date.now() + WINDOWS_RENAME_RETRY_MS;
+  let retryDelayMs = 10;
+  for (;;) {
+    try {
+      await rename(source, target);
+      return;
+    } catch (error) {
+      if (process.platform !== "win32" || !isNodeError(error) || !WINDOWS_RENAME_RETRY_CODES.has(error.code ?? "") || Date.now() >= deadline) throw error;
+      await delay(retryDelayMs);
+      checkLock();
+      retryDelayMs = Math.min(retryDelayMs + 10, 100);
+    }
+  }
 }
 
 export function upsertStateEntry(state: FallbackState, entry: FallbackStateEntry): FallbackState {

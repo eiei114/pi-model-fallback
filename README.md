@@ -121,6 +121,8 @@ The extension stores:
 
 If the package is installed project-locally and the current project references it from `.pi/settings.json`, those files live under the project `.pi/` directory. Otherwise they live under the user agent directory.
 
+Cooldown updates re-read and merge the current state under a shared `proper-lockfile` lock, including across Pi processes. Reset uses the same lock. State is published by atomic replacement, so readers never see a partially written document; expired entries are ignored on read and removed during the next mutation. Lock acquisition is bounded (about two seconds of retries); a lock or write error is reported rather than overwriting state without the lock. A reset clears entries committed before it; a new failure committed afterward can create a new cooldown.
+
 ## Behavior notes
 
 - Successful responses do nothing.

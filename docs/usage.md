@@ -29,3 +29,5 @@ Cooldown defaults when a rule omits `cooldownMs`:
 `Retry-After` and `x-ratelimit-reset*` response headers override `cooldownMs` and those defaults.
 
 If `autoRetry` is disabled, the existing run is not automatically continued.
+
+Shared cooldown state uses a cross-process lock and atomic file replacement. Concurrent failures merge against the latest file, not a session's cached snapshot. Reset takes the same lock and can repair a malformed state file; it clears earlier commits, not failures committed afterward. Expired entries are ignored when selecting a model and cleaned up during the next state mutation. Lock/write failures are reported instead of performing an unlocked overwrite.

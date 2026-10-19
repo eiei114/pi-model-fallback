@@ -19,7 +19,7 @@ function parseChangelogSections(markdown) {
   const sections = [];
   let current = null;
 
-  for (const line of markdown.split("\n")) {
+  for (const line of markdown.split(/\r?\n/)) {
     const versionMatch = line.match(/^## (?:\[(.+?)\] - (.+)|(\d+\.\d+\.\d+)|Unreleased)$/);
     if (versionMatch) {
       current = {
@@ -65,7 +65,7 @@ test("changelog latest release matches package version", () => {
 
 test("contributing release docs commit version bump before push", () => {
   const releaseSection = contributingMd.slice(contributingMd.indexOf("## Release"));
-  const codeBlockMatch = releaseSection.match(/```bash\n([\s\S]*?)```/);
+  const codeBlockMatch = releaseSection.match(/```bash\r?\n([\s\S]*?)```/);
   assert.ok(codeBlockMatch, "release section should include a bash example");
   const releaseCommands = codeBlockMatch[1];
 

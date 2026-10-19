@@ -56,8 +56,12 @@
     "@earendil-works/pi-coding-agent": "1.2.0",
     "@earendil-works/pi-tui": "1.2.0",
     "@types/node": "^26.6.3",
+    "@types/proper-lockfile": "4.1.4",
     "jiti": "^2.7.0",
     "typebox": "latest",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "proper-lockfile": "4.1.2"
   }
 }
