@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import lockfile from "proper-lockfile";
 import { modelRefKey, type ModelRef } from "./config.ts";
-import { isRecord, readJsonIfExists, readModelRef, readNonEmptyString } from "./internal.ts";
+import { isNodeError, isRecord, readJsonIfExists, readModelRef, readNonEmptyString } from "./internal.ts";
 
 export const STATE_VERSION = 1;
+const WINDOWS_RENAME_RETRY_MS = 1000;
+const WINDOWS_RENAME_RETRY_CODES = new Set(["EACCES", "EBUSY", "EPERM"]);
 
 export interface FallbackStateEntry {
   source: ModelRef;
@@ -80,9 +83,26 @@ async function publishState(path: string, state: FallbackState, checkLock: () =>
     }
     // Readers see either the old complete document or the new one, never a partial write.
     checkLock();
-    await rename(temporary, path);
+    await replaceStateFile(temporary, path, checkLock);
   } finally {
     if (created) await rm(temporary, { force: true });
+  }
+}
+
+async function replaceStateFile(source: string, target: string, checkLock: () => void): Promise<void> {
+  // Windows can reject replacement while an unlocked reader briefly has the target open.
+  const deadline = Date.now() + WINDOWS_RENAME_RETRY_MS;
+  let retryDelayMs = 10;
+  for (;;) {
+    try {
+      await rename(source, target);
+      return;
+    } catch (error) {
+      if (process.platform !== "win32" || !isNodeError(error) || !WINDOWS_RENAME_RETRY_CODES.has(error.code ?? "") || Date.now() >= deadline) throw error;
+      await delay(retryDelayMs);
+      checkLock();
+      retryDelayMs = Math.min(retryDelayMs + 10, 100);
+    }
   }
 }
 
