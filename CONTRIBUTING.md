@@ -29,9 +29,7 @@ Before opening a PR:
 
 Releases use npm Trusted Publishing. Do not add `NPM_TOKEN` to GitHub Secrets.
 
-`npm version patch --no-git-tag-version` updates `package.json` locally without creating a tag. Update `CHANGELOG.md` to stamp the new version and date, then commit and push that bump. Merging a version bump to `main` triggers the **Auto Release** workflow automatically: it compares `package.json` against the latest stable release tag, creates the tag and GitHub release, then dispatches the publish workflow.
-
-A maintainer can also run the **Auto Release** workflow manually on `main` with `release_authorized` checked, for example to publish a bump that landed while the workflow was disabled. Manual runs require the same version comparison and refuse to retag an existing version.
+`npm version patch --no-git-tag-version` updates `package.json` locally without creating a tag. Update `CHANGELOG.md` to stamp the new version and date, then commit and push that bump. Merging a version bump to `main` does not create a release or publish automatically. Version bumps accumulate on `main` and are published by the separate release lane, which dispatches the **Auto Release** workflow on `main` with `release_authorized` checked; it creates the tag and GitHub release, then dispatches the publish workflow.
 
 ```bash
 npm version patch --no-git-tag-version

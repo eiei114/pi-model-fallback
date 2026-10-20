@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.7] - 2026-10-19
+
+### Fixed
+
+- Remove the automatic `package.json` push release trigger restored in 0.5.6. Releases stay behind the explicit `release_authorized` dispatch so merged version bumps do not publish on merge, and publication is owned by the separate release lane.
+
 ## [0.5.6] - 2026-10-19
 
 ### Fixed
