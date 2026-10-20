@@ -10,12 +10,12 @@ const workflow = readFileSync(resolve(root, ".github/workflows/auto-release.yml"
 const stableTagScript = resolve(root, ".github/scripts/latest-stable-tag.mjs");
 const triggerBlock = workflow.split(/^permissions:/m, 1)[0];
 
-test("releases run on package.json push and keep explicit dispatch authorization", () => {
+test("releases have no automatic push trigger and require explicit dispatch authorization", () => {
   const triggers = [...triggerBlock.matchAll(/^  ([a-z_]+):/gm)].map((match) => match[1]);
-  assert.deepEqual(triggers, ["push", "workflow_dispatch"]);
+  assert.deepEqual(triggers, ["workflow_dispatch"]);
   assert.match(workflow, /^      release_authorized:\r?\n        description: .+\r?\n        required: true\r?\n        type: boolean\r?\n        default: false$/m);
-  assert.match(workflow, /github\.ref == 'refs\/heads\/main' &&/);
-  assert.match(workflow, /inputs\.release_authorized == true \|\| github\.event_name == 'push'/);
+  assert.match(workflow, /^    if: github\.ref == 'refs\/heads\/main' && inputs\.release_authorized == true$/m);
+  assert.doesNotMatch(workflow, /github\.event_name == 'push'/);
 });
 
 test("manual release compares package version against the latest release tag", () => {
