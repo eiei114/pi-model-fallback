@@ -15,13 +15,14 @@ const NEXT = { provider: "fixture", model: "third" };
 const refModel = ({ provider, model }) => ({ provider, id: model });
 const rule = (from, to) => ({ matchModels: [from], statuses: [429, 529], fallback: to });
 
-async function createHarness({ rules = [rule(SOURCE, FALLBACK)], autoRetry = true, switchModel, preselect = false } = {}) {
+async function createHarness({ rules = [rule(SOURCE, FALLBACK)], autoRetry = true, switchModel, preselect = false, enabled = true, stateFileContents } = {}) {
   const cwd = await mkdtemp(join(tmpdir(), "pi-model-fallback-boundary-"));
   const root = join(cwd, ".pi", "model-fallback");
   await mkdir(root, { recursive: true });
   await writeFile(join(cwd, ".pi", "settings.json"), JSON.stringify({ packages: ["pi-model-fallback"] }));
-  await writeFile(join(root, "config.json"), JSON.stringify({ version: 1, enabled: true, autoRetry, rules }));
-  if (preselect) await writeFile(join(root, "state.json"), JSON.stringify({ version: 1, entries: [{ source: SOURCE, fallback: FALLBACK, status: 429, until: new Date(Date.now() + 3600000).toISOString(), createdAt: new Date().toISOString() }] }));
+  await writeFile(join(root, "config.json"), JSON.stringify({ version: 1, enabled, autoRetry, rules }));
+  if (stateFileContents !== undefined) await writeFile(join(root, "state.json"), stateFileContents);
+  else if (preselect) await writeFile(join(root, "state.json"), JSON.stringify({ version: 1, entries: [{ source: SOURCE, fallback: FALLBACK, status: 429, until: new Date(Date.now() + 3600000).toISOString(), createdAt: new Date().toISOString() }] }));
   const handlers = new Map();
   const calls = { models: [], prompts: [], notifications: [] };
   const tools = new Map();
@@ -172,6 +173,12 @@ test("autoRetry false switches the model without continuing", async () => {
   const h = await createHarness({ autoRetry: false }); await h.fail();
   assert.equal(await h.settle(), undefined);
   assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
+});
+
+test("disabled config skips persistent state loading at agent startup", async () => {
+  const h = await createHarness({ enabled: false, stateFileContents: "not-json" });
+  assert.equal(h.calls.notifications.some(({ message }) => message.includes("state error")), false);
+  assert.deepEqual(h.calls.models, []);
 });
 
 test("manual selection cancels pending fallback", async () => {
