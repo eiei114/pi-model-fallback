@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.8] - 2026-10-22
+
+### Changed
+
+- Skip loading persistent fallback state at agent startup when fallback is disabled.
+
 ## [0.5.7] - 2026-10-19
 
 ### Fixed

@@ -214,8 +214,9 @@ export default function modelFallback(pi: ExtensionAPI) {
     generation += 1;
     pendingFailure = undefined;
     responseFailure = undefined;
-    await loadConfig(ctx);
-    await loadState(ctx);
+    const loadedConfig = await loadConfig(ctx);
+    if (loadedConfig?.enabled) await loadState(ctx);
+    else state = undefined;
     visitedFallbackKeys = new Set(ctx.model ? [modelKey(ctx.model)] : []);
     await applyPersistentFallback(ctx);
     updateStatus(ctx);
