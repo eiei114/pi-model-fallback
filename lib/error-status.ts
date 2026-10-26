@@ -24,10 +24,13 @@ export function parseReasonFromErrorMessage(message: string): string | undefined
 // - "Stream ended without finish_reason" (chunk stream truncated mid-flight)
 // - "<provider> response has no body" (Anthropic/Mistral/generic, 200 empty body)
 // - "<provider> stream ended without a terminal event" (SSE stream dies silently)
+// - "upstream stream closed before a terminal event" (router-relayed SSE death,
+//   e.g. CLIProxyAPI; the wording differs from the provider-level one above)
 const EMPTY_PROVIDER_RESPONSE_PATTERNS: RegExp[] = [
   /provider returned an empty response/i,
   /response (has|with) no body/i,
   /stream ended without a terminal event/i,
+  /stream (?:was )?(?:ended|closed) before (?:a |the )?terminal (?:response )?event/i,
   /stream ended without finish_reason/i,
   /^Anthropic stream ended before message_stop$/,
 ];
