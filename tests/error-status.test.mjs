@@ -21,6 +21,10 @@ test("parseStatusFromErrorMessage extracts leading bare status codes", () => {
     429,
   );
   assert.equal(parseStatusFromErrorMessage("503: service unavailable"), 503);
+  // An explicit status relayed alongside an empty-response phrase must win over
+  // the synthesized 502.
+  assert.equal(parseStatusFromErrorMessage("429: stream closed before a terminal event"), 429);
+  assert.equal(parseStatusFromErrorMessage("upstream error 503: stream ended without a terminal event"), 503);
 });
 
 test("parseStatusFromErrorMessage extracts statuses behind an Error prefix", () => {
@@ -68,6 +72,11 @@ test("parseStatusFromErrorMessage synthesizes 502 for empty-provider responses",
   // The clause needs the terminal-event object; a bare "closed before" is not enough.
   assert.equal(parseStatusFromErrorMessage("stream closed before the response body arrived"), undefined);
   assert.equal(parseStatusFromErrorMessage("connection closed before headers"), undefined);
+  // Explicit statuses still win when both match; the synthetic 502 is only a
+  // fallback for messages that carry no status at all.
+  assert.equal(parseStatusFromErrorMessage("429: stream closed before a terminal event"), 429);
+  assert.equal(parseStatusFromErrorMessage("502: Provider returned an empty response"), 502);
+  assert.equal(parseStatusFromErrorMessage("429: Provider returned an empty response"), 429);
   // Refusals and user-initiated aborts must NOT trigger fallback.
   assert.equal(parseStatusFromErrorMessage("Provider finish_reason: content_filter"), undefined);
   assert.equal(parseStatusFromErrorMessage("Request was aborted"), undefined);

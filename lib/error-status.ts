@@ -50,15 +50,9 @@ export function parseStatusFromErrorMessage(message: string): number | undefined
       // Non-JSON error text still uses the status patterns below.
     }
   }
-  for (const pattern of EMPTY_PROVIDER_RESPONSE_PATTERNS) {
-    if (pattern.test(message)) {
-      // Synthesize 502 so status-based fallback rules fire instead of the
-      // agent silently retrying the same model. 502 is deliberately chosen
-      // over a novel code: it lands in the 5xx status lists users already
-      // configure and inherits the standard 10-minute cooldown.
-      return 502;
-    }
-  }
+  // Explicit numeric statuses take documented precedence over the synthetic
+  // empty-response 502. A relayed message can carry both, for example
+  // "429: stream closed before a terminal event"; the real status must win.
   const patterns: RegExp[] = [
     // SDKs use either "429: ..." or "429 {JSON}"; keep ordinary numeric prose unmatched.
     /^\s*(?:error\s*:?\s*)?([1-5][0-9]{2})(?:\s*:|\s+(?=\{))/i,
@@ -88,6 +82,16 @@ export function parseStatusFromErrorMessage(message: string): number | undefined
     if (!match) continue;
     const status = Number(match[1]);
     if (Number.isInteger(status) && status >= 100 && status <= 599) return status;
+  }
+
+  for (const pattern of EMPTY_PROVIDER_RESPONSE_PATTERNS) {
+    if (pattern.test(message)) {
+      // Synthesize 502 so status-based fallback rules fire instead of the
+      // agent silently retrying the same model. 502 is deliberately chosen
+      // over a novel code: it lands in the 5xx status lists users already
+      // configure and inherits the standard 10-minute cooldown.
+      return 502;
+    }
   }
 
   // Connection failures have no HTTP response; use the existing unavailable-service rules.
