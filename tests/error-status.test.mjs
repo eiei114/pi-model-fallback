@@ -21,6 +21,10 @@ test("parseStatusFromErrorMessage extracts leading bare status codes", () => {
     429,
   );
   assert.equal(parseStatusFromErrorMessage("503: service unavailable"), 503);
+  // An explicit status relayed alongside an empty-response phrase must win over
+  // the synthesized 502.
+  assert.equal(parseStatusFromErrorMessage("429: stream closed before a terminal event"), 429);
+  assert.equal(parseStatusFromErrorMessage("upstream error 503: stream ended without a terminal event"), 503);
 });
 
 test("parseStatusFromErrorMessage extracts statuses behind an Error prefix", () => {
@@ -59,11 +63,38 @@ test("parseStatusFromErrorMessage synthesizes 502 for empty-provider responses",
   assert.equal(parseStatusFromErrorMessage("Attempted to iterate over an Anthropic response with no body"), 502);
   assert.equal(parseStatusFromErrorMessage("Mistral response has no body"), 502);
   assert.equal(parseStatusFromErrorMessage("openrouter stream ended without a terminal event"), 502);
+  // Router-relayed SSE death uses different wording (CLIProxyAPI/upstream routers):
+  // "closed before" instead of "ended without". Without this the turn just fails.
+  assert.equal(parseStatusFromErrorMessage("upstream stream closed before a terminal event (last event: response.output_item.done)"), 502);
+  assert.equal(parseStatusFromErrorMessage("upstream stream closed before the terminal event"), 502);
+  assert.equal(parseStatusFromErrorMessage("stream was closed before a terminal response event"), 502);
+  assert.equal(parseStatusFromErrorMessage("provider stream ended before a terminal event"), 502);
+  // The clause needs the terminal-event object; a bare "closed before" is not enough.
+  assert.equal(parseStatusFromErrorMessage("stream closed before the response body arrived"), undefined);
+  assert.equal(parseStatusFromErrorMessage("connection closed before headers"), undefined);
+  // Explicit statuses still win when both match; the synthetic 502 is only a
+  // fallback for messages that carry no status at all.
+  assert.equal(parseStatusFromErrorMessage("429: stream closed before a terminal event"), 429);
+  assert.equal(parseStatusFromErrorMessage("502: Provider returned an empty response"), 502);
+  assert.equal(parseStatusFromErrorMessage("429: Provider returned an empty response"), 429);
   // Refusals and user-initiated aborts must NOT trigger fallback.
   assert.equal(parseStatusFromErrorMessage("Provider finish_reason: content_filter"), undefined);
   assert.equal(parseStatusFromErrorMessage("Request was aborted"), undefined);
   // Prose containing neither the phrase nor a status stays unmatched.
   assert.equal(parseStatusFromErrorMessage("429 tokens remaining in context window"), undefined);
+});
+
+test("parseStatusFromErrorMessage synthesizes 502 for router-relayed stream death", () => {
+  // CLIProxyAPI (openai-responses) reports the identical failure with the router's
+  // wording. pi's own retry patterns cover "ended without" and "stream ended before
+  // a terminal response event" but not "closed before", so neither Pi nor this
+  // extension recognized the failure and the turn failed with no fallback.
+  assert.equal(parseStatusFromErrorMessage("upstream stream closed before a terminal event (last event: response.output_item.done)"), 502);
+  assert.equal(parseStatusFromErrorMessage("Upstream stream closed before a terminal event"), 502);
+  assert.equal(parseStatusFromErrorMessage("stream closed before terminal event"), 502);
+  // A user abort or an unrelated stream close must stay unmatched.
+  assert.equal(parseStatusFromErrorMessage("stream closed before the user prompt was sent"), undefined);
+  assert.equal(parseStatusFromErrorMessage("Request was aborted"), undefined);
 });
 
 test("parseStatusFromErrorMessage ignores unrelated 3-digit numbers", () => {
