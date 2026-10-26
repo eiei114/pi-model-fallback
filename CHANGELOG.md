@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.9] - 2026-10-26
+
+### Fixed
+
+- Map router-relayed stream death to `502` alongside the provider-level wording, so `upstream stream closed before a terminal event` (CLIProxyAPI and other routers) triggers fallback instead of failing the turn. The pattern accepts both `ended without` and `closed before` phrasings while still requiring the terminal-event object, so unrelated text such as `stream closed before headers` stays unmatched.
+- Let explicit HTTP statuses win over the synthesized empty-response `502`. A relayed message carrying both, such as `429: stream closed before a terminal event`, now reports `429` as documented instead of `502`.
+
 ## [0.5.8] - 2026-10-22
 
 ### Changed
