@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.11] - 2026-10-28
+
+### Changed
+
+- Move the Pi SDK development and test pins to the 1.4.0 wave. All four `@earendil-works` packages have to move together: the `app.*` keybinding ids that `getKeybindings().matches(data, "app.interrupt")` relies on reach `pi-tui`'s `Keybindings` interface through a `declare module` augmentation shipped in `pi-coding-agent`, so a single-package bump fails typecheck with `Argument of type '"app.interrupt"' is not assignable to parameter of type 'keyof Keybindings'`. No production code change was needed, and the smoke verification report is re-recorded against the 1.4.0 host.
+- Bump `@types/node` from `26.6.4` to `26.6.5`.
+
 ## [0.5.10] - 2026-10-28
 
 ### Fixed
