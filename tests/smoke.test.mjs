@@ -21,15 +21,15 @@ test("package uses public publish config", () => {
   assert.equal(packageJson.publishConfig.access, "public");
 });
 
-test("Pi SDK devDependencies are pinned to the verified 1.2.0 wave", () => {
+test("Pi SDK devDependencies are pinned to the verified 1.4.0 wave", () => {
   const expected = {
-    "@earendil-works/pi-agent-core": "1.2.0",
-    "@earendil-works/pi-ai": "1.2.0",
-    "@earendil-works/pi-coding-agent": "1.2.0",
-    "@earendil-works/pi-tui": "1.2.0",
+    "@earendil-works/pi-agent-core": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-tui": "1.4.0",
   };
 
   for (const [name, version] of Object.entries(expected)) {
-    assert.equal(packageJson.devDependencies?.[name], version, `${name} must be an exact 1.2.0 dev/test pin`);
+    assert.equal(packageJson.devDependencies?.[name], version, `${name} must be an exact 1.4.0 dev/test pin`);
   }
 });
