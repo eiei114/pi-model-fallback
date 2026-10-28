@@ -2,10 +2,10 @@ import { resolve } from "node:path";
 
 export const VERIFICATION_CONTRACT = "pi-sdk-behavior-v2";
 export const SDK_VERSIONS = Object.freeze({
-  "@earendil-works/pi-agent-core": "1.2.0",
-  "@earendil-works/pi-ai": "1.2.0",
-  "@earendil-works/pi-coding-agent": "1.2.0",
-  "@earendil-works/pi-tui": "1.2.0",
+  "@earendil-works/pi-agent-core": "1.4.0",
+  "@earendil-works/pi-ai": "1.4.0",
+  "@earendil-works/pi-coding-agent": "1.4.0",
+  "@earendil-works/pi-tui": "1.4.0",
 });
 const COMMITTED_REPORT_PATH = "docs/verification/pi-sdk-smoke.json";
 
@@ -119,7 +119,7 @@ export function behaviorAssertions(name, observed) {
 
   if (name === "host_shell") {
     const output = observed.stdout.trim();
-    return [assertion("native_shell_boundary", "The native host shell launches the locally pinned Pi CLI and returns exactly 1.2.0",
+    return [assertion("native_shell_boundary", "The native host shell launches the locally pinned Pi CLI and returns exactly 1.4.0",
       { exit_code: observed.exitCode, output, expected_version: SDK_VERSIONS["@earendil-works/pi-coding-agent"],
         stderr: observed.stderr.trim(), error: observed.error ?? null },
       observed.exitCode === 0 && !observed.timedOut && !observed.error
