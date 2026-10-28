@@ -117,6 +117,33 @@ test("response metadata keeps retry headers without switching before settlement"
   assert.ok(Date.parse(entries[0].until) - Date.parse(entries[0].createdAt) <= 61000);
 });
 
+test("idle timeout errors trigger fallback after settlement even after HTTP 200", async () => {
+  for (const errorMessage of [
+    "terminated",
+    "Request timed out. Node.js fetch timed out waiting for response headers; configure a matching undici fetch and fetchOptions.dispatcher with an Agent whose headersTimeout is at least the SDK timeout.",
+  ]) {
+    const h = await createHarness({ rules: [{ matchModels: [SOURCE], statuses: [503], fallback: FALLBACK }] });
+    if (errorMessage === "terminated") await h.handlers.get("after_provider_response")({ status: 200, headers: {} }, h.ctx);
+    const failed = await h.fail(errorMessage);
+    assert.deepEqual(h.calls.models, [], "do not switch before Pi settles its retries");
+    assert.deepEqual(await h.settle(), { entries: [{ type: "context_edit", targetId: failed.id, replacement: null }], continue: true });
+    assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
+    const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+    assert.equal(entries[0].status, 503);
+    assert.equal(Date.parse(entries[0].until) - Date.parse(entries[0].createdAt), 600000);
+    assert.equal(h.calls.prompts.length, 0);
+  }
+});
+
+test("a terminated message on an aborted turn never triggers fallback", async () => {
+  const h = await createHarness({ rules: [{ matchModels: [SOURCE], statuses: [503], fallback: FALLBACK }] });
+  const message = { role: "assistant", ...SOURCE, stopReason: "aborted", errorMessage: "terminated" };
+  await h.handlers.get("turn_end")({ message, messageEntryId: "aborted" }, h.ctx);
+  assert.equal(await h.settle("aborted"), undefined);
+  assert.deepEqual(h.calls.models, []);
+  assert.equal(existsSync(h.statePath), false);
+});
+
 test("response status cannot cross models or provider requests", async () => {
   const h = await createHarness({ rules: [rule(SOURCE, FALLBACK), rule(FALLBACK, NEXT)] });
   await h.handlers.get("after_provider_response")({ status: 429, headers: {} }, h.ctx);

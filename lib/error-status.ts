@@ -95,7 +95,8 @@ export function parseStatusFromErrorMessage(message: string): number | undefined
   }
 
   // Connection failures have no HTTP response; use the existing unavailable-service rules.
-  if (/^\s*(?:error:\s*)?(?:connection error|request timed out|fetch failed)[.!]?\s*$/i.test(message) ||
+  if (/^\s*(?:error:\s*)?(?:connection error|request timed out|fetch failed|terminated)[.!]?\s*$/i.test(message) ||
+      /^\s*(?:error:\s*)?request timed out\.\s+\S/i.test(message) ||
       /\b(?:ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT)\b/.test(message)) return 503;
   return undefined;
 }

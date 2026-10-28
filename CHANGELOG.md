@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Map bare `terminated` stream errors and `Request timed out.` errors with SDK diagnostic text to `503`, allowing configured fallback after Pi's retry budget is exhausted.
+
 ## [0.5.9] - 2026-10-26
 
 ### Fixed

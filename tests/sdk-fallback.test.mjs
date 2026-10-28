@@ -18,7 +18,7 @@ const { Type } = await import("typebox");
 setKeybindings(new KeybindingsManager({ "app.interrupt": { defaultKeys: "ctrl+x", description: "Fixture interrupt" } }));
 const error = (status = 429) => fauxAssistantMessage("", { stopReason: "error", errorMessage: `Error: ${status} provider unavailable` });
 
-async function fixture(t, { circular = false, retry = false, preselect = false, customTools = [] } = {}) {
+async function fixture(t, { circular = false, retry = false, preselect = false, customTools = [], statuses = [429, 529] } = {}) {
   const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
   const source = fauxProvider({ provider: "fixture-source", api: "fixture-source", models: [{ id: "source", input: ["text", "image"] }], tokensPerSecond: 100000 });
   const target = fauxProvider({ provider: "fixture-target", api: "fixture-target", models: [{ id: "target", input: ["text", "image"] }], tokensPerSecond: 100000 });
@@ -29,7 +29,7 @@ async function fixture(t, { circular = false, retry = false, preselect = false, 
   const targetModel = runtime.getModel("fixture-target", "target");
   assert.ok(sourceModel);
   assert.ok(targetModel);
-  const rules = [{ matchModels: [{ provider: "fixture-source", model: "source" }], statuses: [429, 529], fallback: { provider: "fixture-target", model: "target" } }];
+  const rules = [{ matchModels: [{ provider: "fixture-source", model: "source" }], statuses, fallback: { provider: "fixture-target", model: "target" } }];
   if (circular) rules.push({ matchModels: [{ provider: "fixture-target", model: "target" }], statuses: [429, 529], fallback: { provider: "fixture-source", model: "source" } });
   const root = join(sandbox, "model-fallback");
   await mkdir(root, { recursive: true });
@@ -113,6 +113,28 @@ test("Pi's own retry finishes before fallback changes the selected model", { tim
   await h.session.prompt("Continue after retry exhaustion.");
   assert.equal(h.source.state.callCount, 2);
   assert.equal(h.target.state.callCount, 1);
+});
+
+test("Pi retries idle timeout errors before switching to the fallback model", { timeout: 15000 }, async (t) => {
+  for (const errorMessage of [
+    "terminated",
+    "Request timed out. Node.js fetch timed out waiting for response headers; configure a matching undici fetch and fetchOptions.dispatcher with an Agent whose headersTimeout is at least the SDK timeout.",
+  ]) {
+    await t.test(errorMessage.slice(0, 30), async (subtest) => {
+      const h = await fixture(subtest, { retry: true, statuses: [503] });
+      const fail = async (_context, options, _state, model) => {
+        if (errorMessage === "terminated") await options.onResponse({ status: 200, headers: {} }, model);
+        return fauxAssistantMessage("", { stopReason: "error", errorMessage });
+      };
+      h.source.setResponses([fail, fail]);
+      h.target.setResponses([fauxAssistantMessage("continued")]);
+      await h.session.prompt("Continue after a stalled provider.");
+      assert.equal(h.source.state.callCount, 2);
+      assert.equal(h.target.state.callCount, 1);
+      assert.equal(h.session.model.provider, "fixture-target");
+      assert.equal(h.session.messages.filter(m => m.role === "user").length, 1);
+    });
+  }
 });
 
 test("custom interrupt during Pi retry cancels fallback despite abortRetry's error outcome", { timeout: 10000 }, async (t) => {
