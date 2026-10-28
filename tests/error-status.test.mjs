@@ -152,6 +152,17 @@ test("parseStatusFromErrorMessage recognizes transport failures but not cancella
   assert.equal(parseStatusFromErrorMessage("HTTP 429: connect ECONNRESET"), 429);
 });
 
+test("parseStatusFromErrorMessage recognizes idle timeout transport errors narrowly", () => {
+  const headersTimeout = "Request timed out. Node.js fetch timed out waiting for response headers; configure a matching undici fetch and fetchOptions.dispatcher with an Agent whose headersTimeout is at least the SDK timeout.";
+  for (const message of ["terminated", "Error: terminated", " TERMINATED. ", headersTimeout, `Error: ${headersTimeout}`]) {
+    assert.equal(parseStatusFromErrorMessage(message), 503, message);
+  }
+  for (const message of ["process terminated by user", "terminated by user", "Request timed outlandish", "Request was aborted", "Operation aborted"]) {
+    assert.equal(parseStatusFromErrorMessage(message), undefined, message);
+  }
+  assert.equal(parseStatusFromErrorMessage("Request timed out. HTTP 429: rate limit"), 429);
+});
+
 test("parseReasonFromErrorMessage extracts quoted provider error codes", () => {
   assert.equal(
     parseReasonFromErrorMessage(
