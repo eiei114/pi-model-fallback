@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import lockfile from "proper-lockfile";
 import { emptyState, readState, updateState, upsertStateEntry, writeState } from "../lib/state.ts";
 import { tmpdir } from "node:os";
+import { setTimeout as sleep } from "node:timers/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { createJiti } from "jiti";
@@ -113,6 +114,9 @@ test("unlocked readers never observe partial JSON during repeated replacements",
       assert.equal(state.version, 1);
       assert.equal(state.entries.length, 1);
       samples++;
+      // Windows rejects replacing a file while any handle to it is open. A reader that reopens the
+      // file back-to-back would starve the writer's bounded rename retry, unlike real sessions.
+      await sleep(1);
     }
   })();
   await Promise.all([writer, reader]);
