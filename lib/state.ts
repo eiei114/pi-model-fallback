@@ -8,6 +8,7 @@ import { isNodeError, isRecord, readJsonIfExists, readModelRef, readNonEmptyStri
 
 export const STATE_VERSION = 1;
 const WINDOWS_RENAME_RETRY_MS = 1000;
+const WINDOWS_RENAME_IMMEDIATE_RETRIES = 8;
 const WINDOWS_RENAME_RETRY_CODES = new Set(["EACCES", "EBUSY", "EPERM"]);
 
 export interface FallbackStateEntry {
@@ -93,15 +94,25 @@ async function replaceStateFile(source: string, target: string, checkLock: () =>
   // Windows can reject replacement while an unlocked reader briefly has the target open.
   const deadline = Date.now() + WINDOWS_RENAME_RETRY_MS;
   let retryDelayMs = 10;
+  let immediateRetries = 0;
   for (;;) {
     try {
       await rename(source, target);
       return;
     } catch (error) {
       if (process.platform !== "win32" || !isNodeError(error) || !WINDOWS_RENAME_RETRY_CODES.has(error.code ?? "") || Date.now() >= deadline) throw error;
-      await delay(retryDelayMs);
+      // Windows timers fire on a shared ~15.6ms tick, so a timer-only backoff wakes in the same
+      // instant as timer-driven readers and can collide on every attempt. Retry across a few
+      // event-loop turns first so an attempt lands just after the reader closes the file.
+      if (immediateRetries < WINDOWS_RENAME_IMMEDIATE_RETRIES) {
+        immediateRetries++;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      } else {
+        immediateRetries = 0;
+        await delay(retryDelayMs);
+        retryDelayMs = Math.min(retryDelayMs + 10, 100);
+      }
       checkLock();
-      retryDelayMs = Math.min(retryDelayMs + 10, 100);
     }
   }
 }
