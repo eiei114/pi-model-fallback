@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import lockfile from "proper-lockfile";
 import { emptyState, readState, updateState, upsertStateEntry, writeState } from "../lib/state.ts";
 import { tmpdir } from "node:os";
+import { setTimeout as sleep } from "node:timers/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { createJiti } from "jiti";
@@ -117,6 +118,33 @@ test("unlocked readers never observe partial JSON during repeated replacements",
   })();
   await Promise.all([writer, reader]);
   assert.ok(samples > 0);
+});
+
+test("timer-driven readers cannot starve the Windows replacement retry", { timeout: 10000 }, async (t) => {
+  // Windows timers share a ~15.6ms tick, so a reader that sleeps between reads wakes together with
+  // a timer-only rename backoff. Every replacement then met an open handle and failed with EPERM.
+  const h = await sharedProject(t);
+  await writeState(h.statePath, { version: 1, entries: [entry("initial")] });
+  let finished = false;
+  let samples = 0;
+  const writer = (async () => {
+    try {
+      for (let index = 0; index < 30; index++) await writeState(h.statePath, {
+        version: 1, entries: [{ ...entry(`writer-${index}`), ruleName: index % 2 ? "short" : "long".repeat(16000) }],
+      });
+    } finally { finished = true; }
+  })();
+  const reader = (async () => {
+    while (!finished) {
+      const state = JSON.parse(await readFile(h.statePath, "utf8"));
+      assert.equal(state.entries.length, 1);
+      samples++;
+      await sleep(10);
+    }
+  })();
+  await Promise.all([writer, reader]);
+  assert.ok(samples > 0);
+  assert.equal((await readState(h.statePath)).entries[0].source.model, "writer-29");
 });
 
 test("a cached pre-reset snapshot cannot resurrect cleared cooldown entries", async (t) => {
