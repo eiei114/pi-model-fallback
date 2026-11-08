@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const usageMd = await readFile(new URL("../docs/usage.md", import.meta.url), "utf8");
+const compatibilityMd = await readFile(new URL("../docs/pi-sdk-compatibility.md", import.meta.url), "utf8");
+const committedSmoke = JSON.parse(await readFile(new URL("../docs/verification/pi-sdk-smoke.json", import.meta.url), "utf8"));
 const contributingMd = await readFile(new URL("../CONTRIBUTING.md", import.meta.url), "utf8");
 const changelogMd = await readFile(new URL("../CHANGELOG.md", import.meta.url), "utf8");
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -61,6 +63,30 @@ test("changelog latest release matches package version", () => {
     packageJson.version,
     "top released CHANGELOG entry should match package.json version",
   );
+});
+
+test("Pi SDK compatibility doc and smoke report match the pinned dev/test versions", () => {
+  const sdkPackages = Object.keys(committedSmoke.sdk_versions);
+  assert.deepEqual(sdkPackages, [
+    "@earendil-works/pi-agent-core",
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-coding-agent",
+    "@earendil-works/pi-tui",
+  ]);
+
+  const versions = new Set(sdkPackages.map((name) => packageJson.devDependencies?.[name]));
+  assert.equal(versions.size, 1, "all four Pi SDK dev/test pins must move together");
+  const [version] = [...versions];
+  assert.match(version, /^1\.5\.0$/, "the verified wave is the frozen 1.5.0 pin");
+
+  assert.match(compatibilityMd, new RegExp(`^# Pi SDK ${version.replaceAll(".", "\\.")} compatibility`, "m"));
+  for (const name of sdkPackages) {
+    assert.ok(
+      compatibilityMd.includes(`- \`${name}\`: \`${version}\``),
+      `docs/pi-sdk-compatibility.md must document ${name}@${version}`,
+    );
+  }
+  assert.deepEqual(committedSmoke.sdk_versions, Object.fromEntries(sdkPackages.map((name) => [name, version])));
 });
 
 test("contributing release docs commit version bump before push", () => {
