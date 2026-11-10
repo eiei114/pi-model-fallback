@@ -66,6 +66,11 @@ test("parseStatusFromErrorMessage synthesizes 429 for ChatGPT subscription usage
   // Explicit HTTP statuses keep precedence over the inferred 429.
   assert.equal(parseStatusFromErrorMessage("503: The ChatGPT user has reached their Subscription Sharing usage limit."), 503);
   assert.equal(parseStatusFromErrorMessage("HTTP 500: You have hit your ChatGPT usage limit"), 500);
+  // An observed HTTP status is authoritative over the inferred quota 429, but
+  // still loses to a status written explicitly in the message.
+  assert.equal(parseStatusFromErrorMessage(chatGPTLimit, 500), 500);
+  assert.equal(parseStatusFromErrorMessage("subscription_sharing_usage_limit_exceeded", 503), 503);
+  assert.equal(parseStatusFromErrorMessage("503: The ChatGPT user has reached their Subscription Sharing usage limit.", 500), 503);
   // Qualified ChatGPT wording only; ordinary usage-limit prose, cancellation,
   // and authentication failures must stay unmatched.
   assert.equal(parseStatusFromErrorMessage("The workspace usage limit is 100 requests per day."), undefined);

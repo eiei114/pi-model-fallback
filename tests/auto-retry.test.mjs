@@ -128,6 +128,16 @@ test("ChatGPT subscription usage limit without an HTTP status triggers the confi
   assert.equal(h.calls.prompts.length, 0);
 });
 
+test("observed HTTP status is preserved over a synthetic ChatGPT quota 429", async () => {
+  const h = await createHarness({ rules: [{ matchModels: [SOURCE], statuses: [500], fallback: FALLBACK }] });
+  await h.handlers.get("after_provider_response")({ status: 500, headers: {} }, h.ctx);
+  const failed = await h.fail("The ChatGPT user has reached their Subscription Sharing usage limit.");
+  assert.deepEqual(await h.settle(), { entries: [{ type: "context_edit", targetId: failed.id, replacement: null }], continue: true });
+  assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries[0].status, 500);
+});
+
 test("idle timeout errors trigger fallback after settlement even after HTTP 200", async () => {
   for (const errorMessage of [
     "terminated",

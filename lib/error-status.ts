@@ -49,7 +49,7 @@ const SUBSCRIPTION_QUOTA_PATTERNS: RegExp[] = [
   /\bchatgpt (?:workspace'?s )?usage limit\b/i,
 ];
 
-export function parseStatusFromErrorMessage(message: string): number | undefined {
+export function parseStatusFromErrorMessage(message: string, observedStatus?: number): number | undefined {
   if (message.trimStart().startsWith("{")) {
     try {
       const payload: unknown = JSON.parse(message);
@@ -100,8 +100,9 @@ export function parseStatusFromErrorMessage(message: string): number | undefined
 
   for (const pattern of SUBSCRIPTION_QUOTA_PATTERNS) {
     if (pattern.test(message)) {
-      // Synthesize 429 so quota retry rules fire and the standard 429 cooldown applies.
-      return 429;
+      // Keep a status observed by the response hook; infer 429 only when the
+      // failure arrived without any HTTP status.
+      return observedStatus ?? 429;
     }
   }
 

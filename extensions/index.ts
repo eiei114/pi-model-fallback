@@ -254,7 +254,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     const source = { provider: message.provider, model: message.model };
     const observed = response?.modelKey === modelRefKey(source) ? response : undefined;
     const errorText = message.errorMessage ?? "";
-    const status = parseStatusFromErrorMessage(errorText) ?? observed?.status;
+    const status = parseStatusFromErrorMessage(errorText, observed?.status) ?? observed?.status;
     if (status !== undefined) {
       pendingFailure = { source, status, reason: parseReasonFromErrorMessage(errorText),
         entryId: event.messageEntryId, headers: observed?.headers ?? {} };
