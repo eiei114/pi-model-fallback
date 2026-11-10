@@ -46,7 +46,7 @@ const EMPTY_PROVIDER_RESPONSE_PATTERNS: RegExp[] = [
 // unmatched, as do cancellation and authentication failures.
 const SUBSCRIPTION_QUOTA_PATTERNS: RegExp[] = [
   /subscription[\s_-]sharing[\s_-][a-z_]*usage[\s_-]limit/i,
-  /\bchatgpt (?:workspace'?s )?usage limit\b/i,
+  /\byou(?:'ve| have) (?:hit|reached) your chatgpt (?:workspace'?s )?usage limit\b/i,
 ];
 
 export function parseStatusFromErrorMessage(message: string, observedStatus?: number): number | undefined {
