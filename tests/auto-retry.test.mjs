@@ -117,6 +117,17 @@ test("response metadata keeps retry headers without switching before settlement"
   assert.ok(Date.parse(entries[0].until) - Date.parse(entries[0].createdAt) <= 61000);
 });
 
+test("ChatGPT subscription usage limit without an HTTP status triggers the configured fallback", async () => {
+  const h = await createHarness();
+  const failed = await h.fail("The ChatGPT user has reached their Subscription Sharing usage limit.\nAsk the user to try again after their usage limit resets or use an API key instead.");
+  assert.deepEqual(h.calls.models, [], "do not switch before Pi settles its retries");
+  assert.deepEqual(await h.settle(), { entries: [{ type: "context_edit", targetId: failed.id, replacement: null }], continue: true });
+  assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries[0].status, 429);
+  assert.equal(h.calls.prompts.length, 0);
+});
+
 test("idle timeout errors trigger fallback after settlement even after HTTP 200", async () => {
   for (const errorMessage of [
     "terminated",
