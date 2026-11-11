@@ -35,7 +35,21 @@ const EMPTY_PROVIDER_RESPONSE_PATTERNS: RegExp[] = [
   /^Anthropic stream ended before message_stop$/,
 ];
 
-export function parseStatusFromErrorMessage(message: string): number | undefined {
+// Subscription quota failures that arrive without an HTTP status. The ChatGPT
+// provider reports its shared subscription limit as a stream error event, so no
+// response hook exposes a status and the numeric patterns above never see a 429:
+// - "The ChatGPT user has reached their Subscription Sharing usage limit. ..."
+// - "You have hit your ChatGPT usage limit (plus plan). Try again in ~N min."
+// - "You've reached your ChatGPT workspace's usage limit. ..."
+// - "subscription_sharing_[workplace_individual_]usage_limit_exceeded"
+// Ordinary usage-limit prose without the ChatGPT/subscription qualifier stays
+// unmatched, as do cancellation and authentication failures.
+const SUBSCRIPTION_QUOTA_PATTERNS: RegExp[] = [
+  /subscription[\s_-]sharing[\s_-][a-z_]*usage[\s_-]limit/i,
+  /\byou(?:'ve| have) (?:hit|reached) your chatgpt (?:workspace'?s )?usage limit\b/i,
+];
+
+export function parseStatusFromErrorMessage(message: string, observedStatus?: number): number | undefined {
   if (message.trimStart().startsWith("{")) {
     try {
       const payload: unknown = JSON.parse(message);
@@ -51,7 +65,7 @@ export function parseStatusFromErrorMessage(message: string): number | undefined
     }
   }
   // Explicit numeric statuses take documented precedence over the synthetic
-  // empty-response 502. A relayed message can carry both, for example
+  // statuses below. A relayed message can carry both, for example
   // "429: stream closed before a terminal event"; the real status must win.
   const patterns: RegExp[] = [
     // SDKs use either "429: ..." or "429 {JSON}"; keep ordinary numeric prose unmatched.
@@ -82,6 +96,14 @@ export function parseStatusFromErrorMessage(message: string): number | undefined
     if (!match) continue;
     const status = Number(match[1]);
     if (Number.isInteger(status) && status >= 100 && status <= 599) return status;
+  }
+
+  for (const pattern of SUBSCRIPTION_QUOTA_PATTERNS) {
+    if (pattern.test(message)) {
+      // Keep a status observed by the response hook; infer 429 only when the
+      // failure arrived without any HTTP status.
+      return observedStatus ?? 429;
+    }
   }
 
   for (const pattern of EMPTY_PROVIDER_RESPONSE_PATTERNS) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Map status-free ChatGPT subscription usage-limit errors to `429`, so `Subscription Sharing usage limit`, the `subscription_sharing_..._usage_limit_exceeded` codes, and the SDK's ChatGPT usage-limit text trigger configured fallback rules after Pi's retries finish instead of failing the turn. Explicit HTTP statuses still take precedence.
+
 ## [0.5.11] - 2026-10-28
 
 ### Changed
