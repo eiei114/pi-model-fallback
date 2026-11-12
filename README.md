@@ -56,10 +56,12 @@ pi -e npm:pi-model-fallback
 
 ```text
 /model-fallback:status
+/model-fallback:clear [provider/model]
 /model-fallback:reset
 ```
 
 - `status`: shows whether fallback is enabled, active persistent entries, and current paths
+- `clear`: drops one persistent entry (or all of them when the argument is omitted) without changing the current model
 - `reset`: clears persistent fallback state and switches back to the remembered original model when possible
 
 ## Configuration
@@ -100,6 +102,8 @@ Top-level fields:
 
 - `enabled`: toggle the extension without deleting rules
 - `autoRetry`: after Pi exhausts its own retries, continue the existing conversation on the fallback model without re-queueing the user prompt (defaults to `true`; set to `false` to only switch models). Completed tool results and image inputs remain in context; only the failed assistant entry is excluded.
+- `transientCooldownMs`: persistent cooldown for a `429`/`529` that carries no quota wording, such as `该模型当前访问量过大` or `temporarily overloaded` (defaults to 10 minutes). See [Cooldowns](#cooldowns).
+- `recoveryProbeMs`: how long a transient entry may preselect the fallback before the source model is retried instead (defaults to 5 minutes; `0` disables retrying). A successful turn from the probed model clears the entry.
 
 Rules use first-match order: the first rule whose provider/model and status match wins. Put specific `matchModels` rules before broad `matchProviders` rules when they should take priority. `model_fallback_config validate`, `save`, `read`, and `status` report warning-only diagnostics when a later rule or model entry is completely shadowed by an earlier rule; `/model-fallback:status` also includes a concise warning summary for the current config. Warning-bearing config remains valid and can still be saved.
 
@@ -107,10 +111,13 @@ Rules use first-match order: the first rule whose provider/model and status matc
 
 When a rule does not set `cooldownMs`, the extension uses these defaults:
 
-- `429` → 72 hours
+- `429`/`529` reporting an exhausted quota (`usage limit`, `insufficient_quota`, `out of budget`, `额度`, `余额`) → 72 hours
+- `429`/`529` reporting overload or throttling (no quota wording, which is also the default for unrecognized text) → `transientCooldownMs`, 10 minutes
 - `5xx` → 10 minutes
 
-When the provider response includes `Retry-After` or `x-ratelimit-reset*` headers, those values override `cooldownMs` and the defaults for the persisted fallback window.
+A transient entry is not allowed to hide a healthy model for its whole window: once it is older than `recoveryProbeMs` (5 minutes by default, and deliberately shorter than the 10-minute `transientCooldownMs` so the retry can actually happen before the entry expires), the next session retries the source model instead of preselecting the fallback, and a successful turn from that model clears the entry. An interrupted turn (`Esc`) does not count as success, because it proves nothing about the provider. A repeated failure simply persists a fresh entry. Quota entries keep their full cooldown and are never probed, and an explicit rule `cooldownMs` or a `Retry-After`/`x-ratelimit-reset*` header disables early retrying too: those state how long the source must be avoided. Entries written by earlier versions have no transient flag and keep their original behavior; `/model-fallback:clear` drops them without changing the current model.
+
+When the provider response includes `Retry-After` or `x-ratelimit-reset*` headers, those values override `cooldownMs`, `transientCooldownMs`, and the defaults for the persisted fallback window.
 
 ## State and paths
 

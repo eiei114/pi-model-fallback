@@ -26,6 +26,20 @@ export interface ModelFallbackConfig {
   enabled: boolean;
   /** Continue the existing conversation after switching without replaying the user prompt. Defaults to true. */
   autoRetry?: boolean;
+  /**
+   * Persistent cooldown for a 429/529 that carries no quota wording (overload,
+   * per-minute throttling). Defaults to 10 minutes; quota 429s keep the 72h
+   * default. `Retry-After` headers still win.
+   */
+  transientCooldownMs?: number;
+  /**
+   * Try the source model again once its transient entry is this old instead of
+   * preselecting the fallback, and clear the entry when the source answers.
+   * Defaults to 5 minutes; 0 disables probing. Keep it below
+   * `transientCooldownMs`: expired entries are pruned on read, so a longer probe
+   * window would never fire.
+   */
+  recoveryProbeMs?: number;
   rules: FallbackRule[];
 }
 
@@ -85,6 +99,12 @@ export function validateConfigShape(value: unknown): ModelFallbackConfig {
     version: CONFIG_VERSION,
     enabled,
     autoRetry: typeof value.autoRetry === "boolean" ? value.autoRetry : true,
+    ...(value.transientCooldownMs === undefined
+      ? {}
+      : { transientCooldownMs: readPositiveInteger(value.transientCooldownMs, "transientCooldownMs") }),
+    ...(value.recoveryProbeMs === undefined
+      ? {}
+      : { recoveryProbeMs: readNonNegativeInteger(value.recoveryProbeMs, "recoveryProbeMs") }),
     rules: value.rules.map((ruleValue, index) => validateRule(ruleValue, index)),
   };
 }
@@ -339,6 +359,11 @@ function readStatuses(value: unknown, path: string): number[] {
 
 function readPositiveInteger(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) throw new Error(`${path} must be a positive integer.`);
+  return value;
+}
+
+function readNonNegativeInteger(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) throw new Error(`${path} must be a non-negative integer.`);
   return value;
 }
 

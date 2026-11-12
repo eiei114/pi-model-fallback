@@ -16,14 +16,23 @@ import {
   type RuleWarning,
 } from "../lib/config.js";
 import { parseReasonFromErrorMessage, parseStatusFromErrorMessage } from "../lib/error-status.js";
-import { findActiveStateEntry, readState, updateState, upsertStateEntry, writeState, type FallbackState } from "../lib/state.js";
+import { cooldownMsFor, cooldownMsFromHeaders, DEFAULT_RECOVERY_PROBE_MS, remainingLabel } from "../lib/cooldown.js";
+import { isTransientRateLimit } from "../lib/transient.js";
+import {
+  findActiveStateEntry,
+  readState,
+  removeStateEntry,
+  shouldProbeRecovery,
+  updateState,
+  upsertStateEntry,
+  writeState,
+  type FallbackState,
+} from "../lib/state.js";
 import { isRecord } from "../lib/internal.ts";
 import { modelFallbackPaths, readConfig, writeConfig, type ModelFallbackPaths } from "../lib/storage.js";
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const STATUS_KEY = "model-fallback";
-const DEFAULT_429_COOLDOWN_MS = 72 * 60 * 60 * 1000;
-const DEFAULT_5XX_COOLDOWN_MS = 10 * 60 * 1000;
 
 export default function modelFallback(pi: ExtensionAPI) {
   let paths: ModelFallbackPaths = modelFallbackPaths(getAgentDir());
@@ -33,6 +42,9 @@ export default function modelFallback(pi: ExtensionAPI) {
   let originalModelKey: string | undefined;
   let activeFallbackKey: string | undefined;
   let lastFallbackReason: string | undefined;
+  // Set when a transient entry is old enough to retry the source model instead
+  // of preselecting the fallback. A successful turn from it clears the entry.
+  let probeSource: ModelRef | undefined;
   // Models already fallen back to during this run (plus the original). A cascade may only
   // target a model never visited, which makes chains (free → kimi → glm) safe while
   // preventing A→B→A ping-pong with circular rules.
@@ -43,7 +55,7 @@ export default function modelFallback(pi: ExtensionAPI) {
   let uiPromptOpen = false;
   let removeTerminalListener: (() => void) | undefined;
   let responseFailure: { modelKey: string; status: number; headers: Record<string, string> } | undefined;
-  let pendingFailure: { source: ModelRef; status: number; reason?: string; entryId: string; headers: Record<string, string> } | undefined;
+  let pendingFailure: { source: ModelRef; status: number; reason?: string; transient: boolean; entryId: string; headers: Record<string, string> } | undefined;
 
   function cancelFallback(): void {
     cancelled = true;
@@ -122,6 +134,18 @@ export default function modelFallback(pi: ExtensionAPI) {
     const active = findActiveStateEntry(loadedState, modelToRef(current));
     if (!active) return;
 
+    // A transient (overload/throttling) cooldown must not hide a healthy model:
+    // once the entry ages past the probe window, retry the source model and let
+    // the normal failure path re-persist an entry if it is still failing.
+    if (shouldProbeRecovery(active, Date.now(), loadedConfig.recoveryProbeMs ?? DEFAULT_RECOVERY_PROBE_MS)) {
+      probeSource = modelToRef(current);
+      ctx.ui.notify(
+        `Model fallback: retrying ${modelRefKey(probeSource)} instead of preselecting ${modelRefKey(active.fallback)} (${active.status} transient cooldown from ${active.createdAt}).`,
+        "info",
+      );
+      return;
+    }
+
     const fallbackModel = ctx.modelRegistry.find(active.fallback.provider, active.fallback.model);
     if (!fallbackModel) {
       ctx.ui.notify(`Model fallback state target missing: ${modelRefKey(active.fallback)}`, "warning");
@@ -153,7 +177,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     ctx.ui.notify(`Model fallback preselected: ${originalModelKey} → ${activeFallbackKey} until ${active.until}.`, "warning");
   }
 
-  async function persistFailure(source: ModelRef, status: number, headers: Record<string, string>, ctx: ExtensionContext, isCancelled: () => boolean, reason?: string): Promise<boolean> {
+  async function persistFailure(source: ModelRef, status: number, headers: Record<string, string>, ctx: ExtensionContext, isCancelled: () => boolean, reason?: string, transient = false): Promise<boolean> {
     const loaded = config ?? (await loadConfig(ctx));
     if (!loaded) return false;
     const match = findFallback(loaded, { provider: source.provider, id: source.model }, status, reason);
@@ -170,7 +194,14 @@ export default function modelFallback(pi: ExtensionAPI) {
     if (visitedFallbackKeys.has(fallbackKey) || isCancelled()) return false;
 
     const now = new Date();
-    const until = new Date(now.getTime() + cooldownMsFor(match.rule.cooldownMs, status, headers)).toISOString();
+    const until = new Date(now.getTime() + cooldownMsFor(match.rule.cooldownMs, status, headers, {
+      transient,
+      transientCooldownMs: loaded.transientCooldownMs,
+    })).toISOString();
+    // Only an auto-classified transient cooldown may be re-probed later. An
+    // explicit rule cooldown or a server-supplied reset window states how long
+    // the source must be avoided, so it is honored verbatim.
+    const probe = transient && match.rule.cooldownMs === undefined && cooldownMsFromHeaders(headers) === undefined;
 
     const prevOriginal = originalModelKey;
     const prevActive = activeFallbackKey;
@@ -182,7 +213,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     visitedFallbackKeys = new Set(prevVisited);
     visitedFallbackKeys.add(sourceKey);
     visitedFallbackKeys.add(fallbackKey);
-    lastFallbackReason = `${status} from ${sourceKey}${reason ? ` (${reason})` : ""}; persistent until ${until}`;
+    lastFallbackReason = `${status} from ${sourceKey}${reason ? ` (${reason})` : ""}${transient ? " (transient)" : ""}; persistent until ${until}`;
     updateStatus(ctx);
 
     let ok = false;
@@ -202,7 +233,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     }
     if (isCancelled()) return false;
     state = await updateState(paths.state, (current) => isCancelled() ? current : upsertStateEntry(current, {
-      source, fallback: match.fallback, status, until, createdAt: now.toISOString(), ruleName: match.rule.name,
+      source, fallback: match.fallback, status, until, createdAt: now.toISOString(), ruleName: match.rule.name, transient, probe,
     }));
     if (isCancelled()) return false;
     ctx.ui.notify(`Model fallback: ${sourceKey} → ${activeFallbackKey} (${status}). Future sessions preselect fallback until ${until}.`, "warning");
@@ -214,6 +245,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     generation += 1;
     pendingFailure = undefined;
     responseFailure = undefined;
+    probeSource = undefined;
     const loadedConfig = await loadConfig(ctx);
     if (loadedConfig?.enabled) await loadState(ctx);
     else state = undefined;
@@ -233,6 +265,7 @@ export default function modelFallback(pi: ExtensionAPI) {
       activeFallbackKey = undefined;
       originalModelKey = undefined;
       lastFallbackReason = undefined;
+      probeSource = undefined;
       visitedFallbackKeys = new Set();
       updateStatus(ctx);
     }
@@ -245,18 +278,34 @@ export default function modelFallback(pi: ExtensionAPI) {
       : undefined;
   });
 
-  pi.on("turn_end", (event) => {
+  pi.on("turn_end", async (event, ctx) => {
     const response = responseFailure;
     responseFailure = undefined;
     pendingFailure = undefined;
     const message = event.message;
-    if (message.role !== "assistant" || message.stopReason !== "error") return;
+    if (message.role !== "assistant") return;
     const source = { provider: message.provider, model: message.model };
+    if (message.stopReason !== "error" && message.stopReason !== "aborted") {
+      // The source model answered after a transient cooldown: the entry did its job.
+      // An aborted turn (Esc) proves nothing about the provider, so the entry stays.
+      if (probeSource && modelRefKey(source) === modelRefKey(probeSource)) {
+        const recovered = probeSource;
+        probeSource = undefined;
+        try {
+          state = await updateState(paths.state, (current) => removeStateEntry(current, recovered));
+          ctx.ui.notify(`Model fallback: ${modelRefKey(recovered)} answered again; cleared its transient cooldown.`, "info");
+        } catch (error) {
+          ctx.ui.notify(`Model fallback state error: ${errorMessage(error)}`, "warning");
+        }
+      }
+      return;
+    }
     const observed = response?.modelKey === modelRefKey(source) ? response : undefined;
     const errorText = message.errorMessage ?? "";
     const status = parseStatusFromErrorMessage(errorText, observed?.status) ?? observed?.status;
     if (status !== undefined) {
       pendingFailure = { source, status, reason: parseReasonFromErrorMessage(errorText),
+        transient: isTransientRateLimit(status, errorText),
         entryId: event.messageEntryId, headers: observed?.headers ?? {} };
     }
   });
@@ -271,7 +320,7 @@ export default function modelFallback(pi: ExtensionAPI) {
     const isCancelled = () => cancelled || generation !== currentGeneration;
     switching = true;
     try {
-      const switched = await persistFailure(failure.source, failure.status, failure.headers, ctx, isCancelled, failure.reason);
+      const switched = await persistFailure(failure.source, failure.status, failure.headers, ctx, isCancelled, failure.reason, failure.transient);
       if (!switched || isCancelled() || config?.autoRetry === false) return;
       return {
         entries: visibleFailure ? [...event.entries, { type: "context_edit" as const, targetId: failure.entryId, replacement: null }] : event.entries,
@@ -293,6 +342,29 @@ export default function modelFallback(pi: ExtensionAPI) {
       const loaded = config ?? (await loadConfig(ctx)) ?? defaultConfig();
       const loadedState = state ?? (await loadState(ctx)) ?? { version: 1 as const, entries: [] };
       ctx.ui.notify(formatStatus(loaded, loadedState, paths.config, paths.state, analyzeRuleWarnings(loaded), activeFallbackKey, originalModelKey, lastFallbackReason), "info");
+    },
+  });
+
+  pi.registerCommand("model-fallback:clear", {
+    description: "Clear one persistent fallback entry (provider/model) or all entries without switching models",
+    handler: async (args, ctx) => {
+      cancelFallback();
+      syncPaths(ctx);
+      const key = args.trim();
+      if (key === "") {
+        state = { version: 1, entries: [] };
+        await writeState(paths.state, state);
+        ctx.ui.notify("Model fallback: cleared all persistent entries; the current model is unchanged.", "info");
+        return;
+      }
+      const slash = key.indexOf("/");
+      if (slash <= 0 || slash === key.length - 1) {
+        ctx.ui.notify(`Model fallback: expected provider/model, got "${key}".`, "warning");
+        return;
+      }
+      const source = { provider: key.slice(0, slash), model: key.slice(slash + 1) };
+      state = await updateState(paths.state, (current) => removeStateEntry(current, source));
+      ctx.ui.notify(`Model fallback: cleared the persistent entry for ${modelRefKey(source)}; the current model is unchanged.`, "info");
     },
   });
 
@@ -423,7 +495,7 @@ function formatStatus(
     `Rules: ${config.rules.length}`,
     `Config warnings: ${warningSummary(warnings)}`,
     `Persistent entries: ${state.entries.length}`,
-    ...state.entries.map((entry) => `- ${modelRefKey(entry.source)} -> ${modelRefKey(entry.fallback)} until ${entry.until} (${entry.status})`),
+    ...state.entries.map((entry) => `- ${modelRefKey(entry.source)} -> ${modelRefKey(entry.fallback)} until ${entry.until} (${entry.status}${entry.transient ? " transient" : ""}, ${remainingLabel(entry.until)})`),
     `Active fallback: ${activeFallbackKey ?? "none"}`,
     `Original model: ${originalModelKey ?? "none"}`,
     `Reason: ${reason ?? "none"}`,
@@ -480,51 +552,6 @@ function warningSummary(warnings: RuleWarning[]): string {
 
 function textResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text" as const, text }], details: details ?? {} };
-}
-
-function cooldownMsFor(ruleCooldownMs: number | undefined, status: number, headers: Record<string, string>): number {
-  const headerMs = cooldownMsFromHeaders(headers);
-  if (headerMs !== undefined) return headerMs;
-  if (ruleCooldownMs !== undefined) return ruleCooldownMs;
-  if (status === 429) return DEFAULT_429_COOLDOWN_MS;
-  if (status >= 500 && status <= 599) return DEFAULT_5XX_COOLDOWN_MS;
-  return DEFAULT_5XX_COOLDOWN_MS;
-}
-
-function cooldownMsFromHeaders(headers: Record<string, string>): number | undefined {
-  const normalized = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
-  const retryAfter = parseRetryAfter(normalized["retry-after"]);
-  if (retryAfter !== undefined) return retryAfter;
-
-  for (const name of ["x-ratelimit-reset", "x-ratelimit-reset-requests", "x-ratelimit-reset-tokens", "ratelimit-reset", "x-rate-limit-reset"]) {
-    const parsed = parseResetHeader(normalized[name]);
-    if (parsed !== undefined) return parsed;
-  }
-  return undefined;
-}
-
-function parseRetryAfter(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  const seconds = Number(trimmed);
-  if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000);
-  const dateMs = Date.parse(trimmed);
-  if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();
-  return undefined;
-}
-
-function parseResetHeader(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  const numeric = Number(trimmed);
-  if (Number.isFinite(numeric) && numeric > 0) {
-    if (numeric > 1_000_000_000_000) return Math.max(0, numeric - Date.now());
-    if (numeric > 1_000_000_000) return Math.max(0, numeric * 1000 - Date.now());
-    return Math.ceil(numeric * 1000);
-  }
-  const dateMs = Date.parse(trimmed);
-  if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();
-  return undefined;
 }
 
 function modelToRef(model: { provider: string; id: string }): ModelRef {

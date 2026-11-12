@@ -214,3 +214,21 @@ test("parseReasonFromErrorMessage falls back to prose patterns", () => {
 test("parseReasonFromErrorMessage ignores numeric status codes", () => {
   assert.equal(parseReasonFromErrorMessage('{"message":"Provider returned error","code":400}'), undefined);
 });
+
+test("parseStatusFromErrorMessage extracts a bare leading status followed by provider prose", () => {
+  assert.equal(parseStatusFromErrorMessage("429 该模型当前访问量过大，请您稍后再试"), 429);
+  assert.equal(parseStatusFromErrorMessage("429 The service may be temporarily overloaded, please try again later"), 429);
+  assert.equal(parseStatusFromErrorMessage("429 Usage limit reached for 5 hour. Your limit will reset at 2026-11-12 23:00:00"), 429);
+  assert.equal(parseStatusFromErrorMessage("503 service unavailable"), 503);
+});
+
+test("parseStatusFromErrorMessage keeps unrelated leading counts unmatched", () => {
+  assert.equal(parseStatusFromErrorMessage("429 tokens remaining in context window"), undefined);
+  assert.equal(parseStatusFromErrorMessage("200 files changed"), undefined);
+});
+
+test("parseStatusFromErrorMessage extracts further bare-status wordings", () => {
+  assert.equal(parseStatusFromErrorMessage("429 requests per minute exceeded"), 429);
+  assert.equal(parseStatusFromErrorMessage("429 daily quota exhausted"), 429);
+  assert.equal(parseStatusFromErrorMessage("429 RATE_LIMIT_EXCEEDED"), 429);
+});
