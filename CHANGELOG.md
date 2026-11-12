@@ -1,10 +1,16 @@
 # Changelog
 
-## [0.5.12] - 2026-11-08
+## [0.6.1] - 2026-11-12
 
 ### Changed
 
 - Move the Pi SDK development and test pins to the 1.5.0 wave. The four `@earendil-works` packages still have to move together, because the `app.*` keybinding ids behind `getKeybindings().matches(data, "app.interrupt")` arrive through a `declare module` augmentation shipped in `pi-coding-agent`. No production code change was needed: `model_fallback_config` keeps a plain JSON Schema built with `Type.Object`, so the 1.5.0 move of tool-argument validation to `@earendil-works/pi-schema` leaves it unchanged, and the extension imports `Type` from `typebox` instead of relying on the re-export `pi-ai` dropped. The smoke verification report is re-recorded against the 1.5.0 host, and `docs/pi-sdk-compatibility.md` records the wave's API surface.
+
+## [0.6.0] - 2026-11-11
+
+### Fixed
+
+- Map status-free ChatGPT subscription usage-limit errors to `429`, so `Subscription Sharing usage limit`, the `subscription_sharing_..._usage_limit_exceeded` codes, and the SDK's ChatGPT usage-limit text trigger configured fallback rules after Pi's retries finish instead of failing the turn. Explicit HTTP statuses still take precedence.
 
 ## [0.5.11] - 2026-10-28
 
