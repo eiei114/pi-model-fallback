@@ -5,7 +5,7 @@
 ### Added
 
 - Separate momentary throttling from an exhausted quota inside the same `429`/`529`. Overload wording (`该模型当前访问量过大`, `temporarily overloaded`, `Too Many Requests`, and unrecognized text) now uses `transientCooldownMs` (10 minutes) instead of the 72-hour quota default, so a single overloaded response no longer pins every new session to the fallback for three days.
-- `recoveryProbeMs` (default 15 minutes): once a transient entry is this old, the session retries the source model instead of preselecting the fallback, and a successful turn clears the entry. Set `0` to disable retrying.
+- `recoveryProbeMs` (default 5 minutes): once a transient entry is this old, the session retries the source model instead of preselecting the fallback, and a successful turn clears the entry. Set `0` to disable retrying. The default is shorter than the 10-minute transient cooldown on purpose: expired entries are pruned before they could be re-probed, so a longer probe window would never fire.
 - `/model-fallback:clear [provider/model]`: drop one persistent entry, or all of them, without changing the active model.
 - `state.json` entries record `transient` so the probe and the status line can tell capacity failures from quota failures.
 

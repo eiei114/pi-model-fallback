@@ -48,6 +48,7 @@ test("remaining labels stay readable for the status command", () => {
   assert.equal(remainingLabel("not-a-date", now), "expired");
 });
 
-test("the probe window defaults to fifteen minutes", () => {
-  assert.equal(DEFAULT_RECOVERY_PROBE_MS, 900000);
+test("the probe window defaults below the transient cooldown so it can fire", () => {
+  assert.equal(DEFAULT_RECOVERY_PROBE_MS, 300000);
+  assert.ok(DEFAULT_RECOVERY_PROBE_MS < DEFAULT_TRANSIENT_COOLDOWN_MS);
 });

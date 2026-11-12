@@ -374,6 +374,29 @@ test("legacy entries without the transient flag keep the old preselect behavior"
   assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
 });
 
+test("a realistic transient entry is probed before it expires", async () => {
+  // Real entries expire after transientCooldownMs (10 minutes). The probe window
+  // has to sit inside that window, otherwise pruning removes the entry before
+  // the retry can happen and the probe path is dead code.
+  const createdAt = Date.now() - 6 * 60 * 1000;
+  const h = await createHarness({
+    stateFileContents: JSON.stringify({
+      version: 1,
+      entries: [{
+        source: SOURCE,
+        fallback: FALLBACK,
+        status: 429,
+        until: new Date(createdAt + 10 * 60 * 1000).toISOString(),
+        createdAt: new Date(createdAt).toISOString(),
+        transient: true,
+        probe: true,
+      }],
+    }),
+  });
+  assert.deepEqual(h.calls.models, [], "the source model must be retried instead of preselecting the fallback");
+  assert.ok(h.calls.notifications.some(({ message }) => message.includes("retrying")));
+});
+
 test("model-fallback:clear drops a single entry without switching models", async () => {
   const h = await createHarness({ stateFileContents: TRANSIENT_ENTRY(60 * 1000) });
   const clear = h.commands.get("model-fallback:clear");

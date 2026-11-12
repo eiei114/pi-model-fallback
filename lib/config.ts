@@ -35,7 +35,9 @@ export interface ModelFallbackConfig {
   /**
    * Try the source model again once its transient entry is this old instead of
    * preselecting the fallback, and clear the entry when the source answers.
-   * Defaults to 15 minutes; 0 disables probing.
+   * Defaults to 5 minutes; 0 disables probing. Keep it below
+   * `transientCooldownMs`: expired entries are pruned on read, so a longer probe
+   * window would never fire.
    */
   recoveryProbeMs?: number;
   rules: FallbackRule[];

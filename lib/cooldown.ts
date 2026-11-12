@@ -1,7 +1,10 @@
 export const DEFAULT_429_COOLDOWN_MS = 72 * 60 * 60 * 1000;
 export const DEFAULT_TRANSIENT_COOLDOWN_MS = 10 * 60 * 1000;
 export const DEFAULT_5XX_COOLDOWN_MS = 10 * 60 * 1000;
-export const DEFAULT_RECOVERY_PROBE_MS = 15 * 60 * 1000;
+// Must stay below DEFAULT_TRANSIENT_COOLDOWN_MS: expired entries are pruned on
+// read, so a probe window longer than the cooldown could never fire and the
+// source model would only be retried once the entry aged out anyway.
+export const DEFAULT_RECOVERY_PROBE_MS = 5 * 60 * 1000;
 
 export interface CooldownOptions {
   /** Set for a 429/529 that carries no quota wording; see `lib/transient.ts`. */
