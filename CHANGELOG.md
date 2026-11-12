@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Separate momentary throttling from an exhausted quota inside the same `429`/`529`. Overload wording (`该模型当前访问量过大`, `temporarily overloaded`, `Too Many Requests`, and unrecognized text) now uses `transientCooldownMs` (10 minutes) instead of the 72-hour quota default, so a single overloaded response no longer pins every new session to the fallback for three days.
+- `recoveryProbeMs` (default 15 minutes): once a transient entry is this old, the session retries the source model instead of preselecting the fallback, and a successful turn clears the entry. Set `0` to disable retrying.
+- `/model-fallback:clear [provider/model]`: drop one persistent entry, or all of them, without changing the active model.
+- `state.json` entries record `transient` so the probe and the status line can tell capacity failures from quota failures.
+
+### Fixed
+
+- Do not clear a transient entry when the probed turn was interrupted (`stopReason: "aborted"`): an `Esc` proves nothing about the provider, so the cooldown keeps its remaining window instead of being deleted.
+- Never re-probe early when the cooldown came from an explicit rule `cooldownMs` or from a `Retry-After`/`x-ratelimit-reset*` header. Those state how long the source must be avoided, so only the auto-classified transient default is retried before it expires.
+- Treat Chinese allowance wording such as `用量已达上限` and `今日调用次数已用完` as quota exhaustion, while load wording such as `请求量超出限制` stays a transient throttling signal.
+- Parse a bare leading status followed by provider prose (`429 该模型当前访问量过大`, `429 Usage limit reached for 5 hour`, `503 service unavailable`, `429 requests per minute exceeded`, `429 RATE_LIMIT_EXCEEDED`). Without a colon or JSON body these messages carried no recognizable status, so matching rules never fired. Unrelated leading counts such as `429 tokens remaining in context window` stay unmatched.
+- `/model-fallback:status` now shows the remaining time and the transient flag per persistent entry.
+
 ## [0.6.0] - 2026-11-11
 
 ### Fixed

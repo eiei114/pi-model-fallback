@@ -15,24 +15,25 @@ const NEXT = { provider: "fixture", model: "third" };
 const refModel = ({ provider, model }) => ({ provider, id: model });
 const rule = (from, to) => ({ matchModels: [from], statuses: [429, 529], fallback: to });
 
-async function createHarness({ rules = [rule(SOURCE, FALLBACK)], autoRetry = true, switchModel, preselect = false, enabled = true, stateFileContents } = {}) {
+async function createHarness({ rules = [rule(SOURCE, FALLBACK)], autoRetry = true, configExtra = {}, switchModel, preselect = false, enabled = true, stateFileContents } = {}) {
   const cwd = await mkdtemp(join(tmpdir(), "pi-model-fallback-boundary-"));
   const root = join(cwd, ".pi", "model-fallback");
   await mkdir(root, { recursive: true });
   await writeFile(join(cwd, ".pi", "settings.json"), JSON.stringify({ packages: ["pi-model-fallback"] }));
-  await writeFile(join(root, "config.json"), JSON.stringify({ version: 1, enabled, autoRetry, rules }));
+  await writeFile(join(root, "config.json"), JSON.stringify({ version: 1, enabled, autoRetry, ...configExtra, rules }));
   if (stateFileContents !== undefined) await writeFile(join(root, "state.json"), stateFileContents);
   else if (preselect) await writeFile(join(root, "state.json"), JSON.stringify({ version: 1, entries: [{ source: SOURCE, fallback: FALLBACK, status: 429, until: new Date(Date.now() + 3600000).toISOString(), createdAt: new Date().toISOString() }] }));
   const handlers = new Map();
   const calls = { models: [], prompts: [], notifications: [] };
   const tools = new Map();
+  const commands = new Map();
   let terminalInput;
   let ctx;
   let serial = 0;
   const entries = [{ type: "message", id: "user", message: { role: "user", content: "finish the existing work" } }];
   const pi = {
     on(type, handler) { handlers.set(type, handler); },
-    registerCommand() {}, registerTool(tool) { tools.set(tool.name, tool); },
+    registerCommand(name, command) { commands.set(name, command); }, registerTool(tool) { tools.set(tool.name, tool); },
     async setModel(model) {
       if (switchModel && !(await switchModel(model))) return false;
       calls.models.push(model);
@@ -69,7 +70,7 @@ async function createHarness({ rules = [rule(SOURCE, FALLBACK)], autoRetry = tru
     assert.equal(typeof handler, "function", "fallback must use Pi's actionable settle boundary");
     return handler({ outcome, entries: [], continue: false, context: { contextEntries: entries.map(entry => ({ sourceEntry: entry, messages: [entry.message] })), pendingMessages: [], canContinue: false } }, ctx);
   }
-  return { calls, ctx, entries, handlers, fail, settle, start, tools, escape: () => terminalInput?.("\u001b"), statePath: join(root, "state.json") };
+  return { calls, commands, ctx, entries, handlers, fail, settle, start, tools, escape: () => terminalInput?.("\u001b"), statePath: join(root, "state.json") };
 }
 
 test("a failure switches only at settlement and continues without a second user request", async () => {
@@ -250,4 +251,143 @@ test("shutdown removes the terminal listener and pending work", async () => {
   const h = await createHarness(); await h.fail();
   await h.handlers.get("session_shutdown")({}, h.ctx); h.escape();
   assert.equal(await h.settle(), undefined);
+});
+
+const TRANSIENT_ENTRY = (ageMs, overrides = {}) => JSON.stringify({
+  version: 1,
+  entries: [{
+    source: SOURCE,
+    fallback: FALLBACK,
+    status: 429,
+    until: new Date(Date.now() + 3600000).toISOString(),
+    createdAt: new Date(Date.now() - ageMs).toISOString(),
+    transient: true,
+    probe: true,
+    ...overrides,
+  }],
+});
+
+test("a transient overload 429 persists a short cooldown instead of pinning 72h", async () => {
+  const h = await createHarness();
+  await h.fail("429 该模型当前访问量过大，请您稍后再试");
+  assert.equal((await h.settle()).continue, true);
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries[0].transient, true);
+  assert.equal(entries[0].probe, true);
+  assert.equal(Date.parse(entries[0].until) - Date.parse(entries[0].createdAt), 600000);
+});
+
+test("a quota 429 keeps the long default cooldown", async () => {
+  const h = await createHarness();
+  await h.fail("429 Usage limit reached for 5 hour. Your limit will reset at 2026-11-12 23:00:00");
+  assert.equal((await h.settle()).continue, true);
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries[0].transient, false);
+  assert.equal(entries[0].probe, false);
+  assert.equal(Date.parse(entries[0].until) - Date.parse(entries[0].createdAt), 72 * 60 * 60 * 1000);
+});
+
+test("CJK usage-limit wording counts as quota, not overload", async () => {
+  const h = await createHarness();
+  await h.fail("429 用量已达上限，请稍后再试");
+  assert.equal((await h.settle()).continue, true);
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries[0].transient, false);
+  assert.equal(entries[0].probe, false);
+});
+
+test("an explicit rule cooldownMs is honored instead of being probed early", async () => {
+  const h = await createHarness({ rules: [{ matchModels: [SOURCE], statuses: [429], cooldownMs: 3600000, fallback: FALLBACK }] });
+  await h.fail("429 该模型当前访问量过大，请您稍后再试");
+  await h.settle();
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(Date.parse(entries[0].until) - Date.parse(entries[0].createdAt), 3600000);
+  assert.equal(entries[0].probe, false, "an explicit cooldown is user intent and must not be re-probed early");
+});
+
+test("a Retry-After header disables early probing", async () => {
+  const h = await createHarness();
+  await h.handlers.get("after_provider_response")({ status: 429, headers: { "retry-after": "900" } }, h.ctx);
+  await h.fail("429 The service may be temporarily overloaded");
+  await h.settle();
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries[0].transient, true);
+  assert.equal(entries[0].probe, false, "the provider's stated reset window wins");
+});
+
+test("an aborted turn does not delete the probed entry", async () => {
+  const h = await createHarness({ stateFileContents: TRANSIENT_ENTRY(20 * 60 * 1000) });
+  await h.handlers.get("turn_end")({
+    message: { role: "assistant", provider: SOURCE.provider, model: SOURCE.model, stopReason: "aborted", content: [] },
+    messageEntryId: "esc",
+  }, h.ctx);
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries.length, 1, "an interrupted turn proves nothing about the provider");
+});
+
+test("an aged transient entry retries the source model instead of preselecting the fallback", async () => {
+  const h = await createHarness({ stateFileContents: TRANSIENT_ENTRY(20 * 60 * 1000) });
+  assert.deepEqual(h.calls.models, [], "the source model must be retried, not replaced");
+  assert.ok(h.calls.notifications.some(({ message }) => message.includes("retrying")));
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries.length, 1, "a probe must not rewrite state before the source model answers");
+});
+
+test("a successful turn clears the probed transient entry", async () => {
+  const h = await createHarness({ stateFileContents: TRANSIENT_ENTRY(20 * 60 * 1000) });
+  await h.handlers.get("turn_end")({
+    message: { role: "assistant", provider: SOURCE.provider, model: SOURCE.model, stopReason: "stop", content: [] },
+    messageEntryId: "recovered",
+  }, h.ctx);
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.deepEqual(entries, []);
+  assert.ok(h.calls.notifications.some(({ message }) => message.includes("answered again")));
+});
+
+test("a transient entry inside the probe window still preselects the fallback", async () => {
+  const h = await createHarness({ stateFileContents: TRANSIENT_ENTRY(60 * 1000) });
+  assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
+});
+
+test("recoveryProbeMs 0 disables probing", async () => {
+  const h = await createHarness({ configExtra: { recoveryProbeMs: 0 }, stateFileContents: TRANSIENT_ENTRY(20 * 60 * 1000) });
+  assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
+});
+
+test("a quota entry is never probed and keeps its full cooldown", async () => {
+  const h = await createHarness({ stateFileContents: TRANSIENT_ENTRY(30 * 60 * 1000, { transient: false, probe: false }) });
+  assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
+});
+
+test("legacy entries without the transient flag keep the old preselect behavior", async () => {
+  const legacy = JSON.stringify({
+    version: 1,
+    entries: [{
+      source: SOURCE,
+      fallback: FALLBACK,
+      status: 429,
+      until: new Date(Date.now() + 3600000).toISOString(),
+      createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    }],
+  });
+  const h = await createHarness({ stateFileContents: legacy });
+  assert.deepEqual(h.calls.models, [refModel(FALLBACK)]);
+});
+
+test("model-fallback:clear drops a single entry without switching models", async () => {
+  const h = await createHarness({ stateFileContents: TRANSIENT_ENTRY(60 * 1000) });
+  const clear = h.commands.get("model-fallback:clear");
+  assert.equal(typeof clear?.handler, "function");
+  await clear.handler("fixture/source", h.ctx);
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.deepEqual(entries, []);
+  assert.deepEqual(h.calls.models, [refModel(FALLBACK)], "clearing must not change the active model");
+});
+
+test("model-fallback:clear rejects a key without a provider", async () => {
+  const h = await createHarness({ stateFileContents: TRANSIENT_ENTRY(60 * 1000) });
+  await h.commands.get("model-fallback:clear").handler("source", h.ctx);
+  assert.ok(h.calls.notifications.some(({ level }) => level === "warning"));
+  const { entries } = JSON.parse(await readFile(h.statePath, "utf8"));
+  assert.equal(entries.length, 1);
 });

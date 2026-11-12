@@ -14,6 +14,7 @@ Commands:
 
 ```text
 /model-fallback:status
+/model-fallback:clear [provider/model]
 /model-fallback:reset
 ```
 
@@ -23,10 +24,13 @@ Rules can also match on failure reasons with `reasons`, for example `"reasons": 
 
 Cooldown defaults when a rule omits `cooldownMs`:
 
-- `429` → 72 hours
+- `429`/`529` with exhausted-quota wording (`usage limit`, `insufficient_quota`, `out of budget`, `额度`, `余额`) → 72 hours
+- `429`/`529` with overload/throttling wording, including unrecognized text (`该模型当前访问量过大`, `temporarily overloaded`, `Too Many Requests`) → `transientCooldownMs`, 10 minutes
 - `5xx` → 10 minutes
 
-`Retry-After` and `x-ratelimit-reset*` response headers override `cooldownMs` and those defaults.
+A transient cooldown heals itself. Once a transient entry is older than `recoveryProbeMs` (15 minutes by default), the next session retries the source model instead of preselecting the fallback, and a successful turn clears the entry; an interrupted turn does not count, and a repeated failure persists a fresh one. Quota entries keep their full cooldown and are never retried early, and neither is a transient entry whose window came from an explicit rule `cooldownMs` or a `Retry-After`/`x-ratelimit-reset*` header. `/model-fallback:clear <provider/model>` drops a single entry without changing the active model, which is the escape hatch for entries written by earlier versions (they carry no transient flag and keep their original cooldown).
+
+`Retry-After` and `x-ratelimit-reset*` response headers override `cooldownMs`, `transientCooldownMs`, and those defaults.
 
 If `autoRetry` is disabled, the existing run is not automatically continued.
 

@@ -18,6 +18,20 @@ export interface FallbackStateEntry {
   until: string;
   createdAt: string;
   ruleName?: string;
+  /**
+   * True when the failing status was a capacity/throttling signal (see
+   * `lib/transient.ts`) rather than an exhausted quota. Transient entries are
+   * re-probed instead of pinning every new session to the fallback, and they
+   * clear themselves once the source model answers again. Entries written by
+   * earlier versions omit the flag and keep their original cooldown.
+   */
+  transient?: boolean;
+  /**
+   * True only when this cooldown came from the transient default: an explicit
+   * rule `cooldownMs` or a `Retry-After`/`x-ratelimit-reset*` header is the
+   * user's or the provider's stated intent and is never re-probed early.
+   */
+  probe?: boolean;
 }
 
 export interface FallbackState {
@@ -130,6 +144,27 @@ export function findActiveStateEntry(state: FallbackState, source: ModelRef, now
   return state.entries.find((entry) => modelRefKey(entry.source) === sourceKey && Date.parse(entry.until) > now.getTime());
 }
 
+/**
+ * Old transient entries must not keep preselecting the fallback forever: once
+ * `recoveryProbeMs` has passed, the session tries the source model again and a
+ * failure simply re-persists a fresh entry. Quota entries and legacy entries
+ * without the flag keep their full cooldown.
+ */
+export function shouldProbeRecovery(entry: FallbackStateEntry, nowMs: number, recoveryProbeMs: number): boolean {
+  if (entry.probe !== true || recoveryProbeMs <= 0) return false;
+  const createdAt = Date.parse(entry.createdAt);
+  if (Number.isNaN(createdAt)) return false;
+  return nowMs - createdAt >= recoveryProbeMs;
+}
+
+export function removeStateEntry(state: FallbackState, source: ModelRef): FallbackState {
+  const sourceKey = modelRefKey(source);
+  return {
+    version: STATE_VERSION,
+    entries: state.entries.filter((entry) => modelRefKey(entry.source) !== sourceKey),
+  };
+}
+
 export function pruneExpiredState(state: FallbackState, now = new Date()): FallbackState {
   const nowMs = now.getTime();
   return {
@@ -164,6 +199,8 @@ function validateEntry(value: unknown, index: number): FallbackStateEntry {
     createdAt,
   };
   if (typeof value.ruleName === "string" && value.ruleName.trim() !== "") entry.ruleName = value.ruleName.trim();
+  if (typeof value.transient === "boolean") entry.transient = value.transient;
+  if (typeof value.probe === "boolean") entry.probe = value.probe;
   return entry;
 }
 
