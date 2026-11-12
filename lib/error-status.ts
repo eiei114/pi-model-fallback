@@ -77,6 +77,18 @@ export function parseStatusFromErrorMessage(message: string, observedStatus?: nu
     // "error" prefix is required: without it this would also match prose such as
     // "429 tokens remaining in context window", which must stay unmatched.
     /^\s*error\s*:?\s*([1-5][0-9]{2})\b/i,
+    // Bare start-of-line status followed by prose, for example zai's
+    // "429 该模型当前访问量过大，请您稍后再试" or "429 Usage limit reached for
+    // 5 hour". An SDK-relayed zai failure has no colon and no JSON body, so
+    // without these two patterns the rule set never sees a status at all. The
+    // word list keeps unrelated counts such as "429 tokens remaining in
+    // context window" unmatched.
+    /^\s*(?:error\s*:?\s*)?([1-5][0-9]{2})\s+(?:the\s+)?(?:requests?|daily|service|model|usage|rate|quota|limit|exceeded|too\s+many|please|try|you|your|insufficient|out\s+of|available|overloaded|server|provider|stream)\b/i,
+    /^\s*(?:error\s*:?\s*)?([1-5][0-9]{2})\s+[\u3400-\u9FFF]/,
+    // Bare start-of-line status followed by a machine code, for example
+    // "429 RATE_LIMIT_EXCEEDED". Requires at least four characters so ordinary
+    // short prose stays unmatched.
+    /^\s*(?:error\s*:?\s*)?([1-5][0-9]{2})\s+[A-Z][A-Z0-9_]{3,}\b/,
     /\b(?:status|code|http)\s*[:\s]?\s*([1-5][0-9]{2})\b/i,
     // Parenthesized status inside a provider error wrapper, e.g.
     // "omni API error (503): overloaded" or "chat_completion_error (429): ...".
