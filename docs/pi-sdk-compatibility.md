@@ -67,5 +67,7 @@ assertions exclude is what a 1.4.0 host produced, so the test fails if the
 validator handoff regresses.
 
 Re-record the committed report with `node scripts/pi-sdk-smoke.mjs --record`
-after changing the pins; an ordinary `npm run smoke:pi` run writes only to the
-git-ignored `tmp/` report and fails if the committed report would change.
+after changing the pins; an ordinary `npm run smoke:pi` run writes its report only to
+the git-ignored `tmp/` path and fails if the committed report is modified during the
+run. It does not compare the generated report with the committed evidence, so a
+stale but untouched committed report still passes.
