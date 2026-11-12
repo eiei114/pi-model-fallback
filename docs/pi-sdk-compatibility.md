@@ -14,8 +14,9 @@ The 1.2.0 notes in the upstream
 [Pi SDK compatibility notes](https://github.com/eiei114/pi-extension-template/blob/main/docs/pi-sdk-compatibility.md)
 record the `before_agent_start` message-type union and startup busy-state
 changes. Moving the pins from 1.2.0 through 1.4.0 required no production API
-migration: the extension still reads only `getKeybindings()` matching and the
-`onTerminalInput` observer, both of which are unchanged through 1.5.0.
+migration: the extension still uses `getKeybindings()` matching and the
+`onTerminalInput` observer alongside `getAgentDir()` and `registerTool()`, all
+of which are unchanged through 1.5.0.
 
 The four Pi packages must be bumped together. `app.interrupt` and the other app
 keybinding ids reach `Keybindings` through a `declare module` augmentation that
