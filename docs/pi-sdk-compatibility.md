@@ -1,11 +1,11 @@
-# Pi SDK 1.5.0 compatibility
+# Pi SDK 1.5.2 compatibility
 
 This package is verified with the frozen development/test versions:
 
-- `@earendil-works/pi-agent-core`: `1.5.0`
-- `@earendil-works/pi-ai`: `1.5.0`
-- `@earendil-works/pi-coding-agent`: `1.5.0`
-- `@earendil-works/pi-tui`: `1.5.0`
+- `@earendil-works/pi-agent-core`: `1.5.2`
+- `@earendil-works/pi-ai`: `1.5.2`
+- `@earendil-works/pi-coding-agent`: `1.5.2`
+- `@earendil-works/pi-tui`: `1.5.2`
 
 These exact versions are dev/test pins. Public peer dependency ranges are
 unchanged; the package continues to require Pi 1.1 or later.
@@ -13,10 +13,10 @@ unchanged; the package continues to require Pi 1.1 or later.
 The 1.2.0 notes in the upstream
 [Pi SDK compatibility notes](https://github.com/eiei114/pi-extension-template/blob/main/docs/pi-sdk-compatibility.md)
 record the `before_agent_start` message-type union and startup busy-state
-changes. Moving the pins from 1.2.0 through 1.4.0 required no production API
-migration: the extension still uses `getKeybindings()` matching and the
-`onTerminalInput` observer alongside `getAgentDir()` and `registerTool()`, all
-of which are unchanged through 1.5.0.
+changes. This extension uses `getKeybindings()` matching and the
+`onTerminalInput` observer alongside `getAgentDir()` and `registerTool()`;
+the 1.5.2 typecheck and actual-host smoke below exercise this package's use of
+those APIs without requiring a production API migration.
 
 The four Pi packages must be bumped together. `app.interrupt` and the other app
 keybinding ids reach `Keybindings` through a `declare module` augmentation that
@@ -47,6 +47,16 @@ failing typecheck with `not assignable to parameter of type 'keyof Keybindings'`
   from `@earendil-works/pi-coding-agent` can resolve an extension-local copy
   that cannot see Pi's keybindings. This extension renders no key hints, so
   there is nothing to migrate.
+
+## 1.5.2 verification
+
+The four development/test pins move together to `1.5.2`; public peer dependency
+ranges remain unchanged. The committed smoke report records all five
+`extension_load`, `happy_path`, `error_path`, `reload_cleanup`, and `host_shell`
+cases against the actual locally pinned Pi CLI/RPC host and extension. The
+deterministic offline provider avoids paid inference; it does not mock the Pi
+host or extension lifecycle. The real-host tool-schema regression also runs
+against the pinned 1.5.2 SDK.
 
 ## Verifying a wave
 

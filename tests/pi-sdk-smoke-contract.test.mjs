@@ -10,14 +10,14 @@ const response = (id, disposition = "handled") => ({ type: "response", id, comma
 const notify = (message) => ({ type: "extension_ui_request", method: "notify", message });
 const cleanProcess = (rows) => ({ rows, exitCode: 0, timedOut: false, error: null, fullOutput: "" });
 
-test("Pi SDK behavior contract parses JSONL and pins the frozen versions", () => {
+test("Pi SDK behavior contract parses JSONL and pins the accepted 1.5.2 versions", () => {
   assert.equal(VERIFICATION_CONTRACT, "pi-sdk-behavior-v2");
   assert.deepEqual(parseJsonLines(`not-json\r\n${JSON.stringify(response("ok"))}\n[]\n`), [response("ok")]);
   assert.deepEqual(SDK_VERSIONS, {
-    "@earendil-works/pi-agent-core": "1.5.0",
-    "@earendil-works/pi-ai": "1.5.0",
-    "@earendil-works/pi-coding-agent": "1.5.0",
-    "@earendil-works/pi-tui": "1.5.0",
+    "@earendil-works/pi-agent-core": "1.5.2",
+    "@earendil-works/pi-ai": "1.5.2",
+    "@earendil-works/pi-coding-agent": "1.5.2",
+    "@earendil-works/pi-tui": "1.5.2",
   });
 });
 
@@ -74,8 +74,8 @@ test("reload requires actual second-process status and feature responses plus cl
 });
 
 test("native shell boundary rejects absent or non-exact version output", () => {
-  assert.equal(behaviorAssertions("host_shell", { exitCode: 0, stdout: "1.5.0\r\n", stderr: "", timedOut: false })[0].passed, true);
-  for (const stdout of ["", "11.5.0", "1.5.0 then error", "1.4.0", "1.1.0"]) {
+  assert.equal(behaviorAssertions("host_shell", { exitCode: 0, stdout: "1.5.2\r\n", stderr: "", timedOut: false })[0].passed, true);
+  for (const stdout of ["", "11.5.2", "1.5.2 then error", "1.5.0", "1.4.0", "1.1.0"]) {
     assert.equal(behaviorAssertions("host_shell", { exitCode: 0, stdout, stderr: "", timedOut: false })[0].passed, false);
   }
 });
