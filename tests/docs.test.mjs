@@ -77,7 +77,7 @@ test("Pi SDK compatibility doc and smoke report match the pinned dev/test versio
   const versions = new Set(sdkPackages.map((name) => packageJson.devDependencies?.[name]));
   assert.equal(versions.size, 1, "all four Pi SDK dev/test pins must move together");
   const [version] = [...versions];
-  assert.match(version, /^1\.5\.0$/, "the verified wave is the frozen 1.5.0 pin");
+  assert.match(version, /^1\.5\.2$/, "the accepted wave is the exact Pi SDK 1.5.2 pin");
 
   assert.match(compatibilityMd, new RegExp(`^# Pi SDK ${version.replaceAll(".", "\\.")} compatibility`, "m"));
   for (const name of sdkPackages) {
