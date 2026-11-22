@@ -45,10 +45,10 @@ async function fixture() {
   return { session, provider };
 }
 
-// Pi 1.5.0 validates tool arguments with @earendil-works/pi-schema instead of TypeBox.
+// Pi 1.5.2 validates tool arguments with @earendil-works/pi-schema instead of TypeBox.
 // The package's model_fallback_config tool still declares plain JSON Schema, so both a
 // valid call (executes) and an invalid one (rejected before execute) must keep working.
-test("real Pi 1.5.0 validates the model_fallback_config tool schema", { timeout: 20000 }, async (t) => {
+test("real Pi 1.5.2 validates the model_fallback_config tool schema", { timeout: 20000 }, async (t) => {
   const { session, provider } = await fixture();
   t.after(async () => {
     await session.abort();

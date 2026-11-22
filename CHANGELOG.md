@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.3] - 2026-11-20
+
+### Changed
+
+- Verify the Pi SDK development and test dependency wave at 1.5.2. The four exact pins, lockfile, compatibility notes, and actual-host smoke evidence now agree; public peer dependency ranges and extension behavior are unchanged.
+
 ## [0.6.2] - 2026-11-13
 
 ### Changed
