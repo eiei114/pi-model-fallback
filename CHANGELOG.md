@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Ignore elapsed rate-limit reset timestamps in epoch seconds or milliseconds so a later valid header or the local cooldown can take effect.
+
 ## [0.6.2] - 2026-11-13
 
 ### Changed

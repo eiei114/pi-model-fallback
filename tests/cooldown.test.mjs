@@ -39,6 +39,39 @@ test("header parsing ignores unusable values", () => {
   assert.equal(cooldownMsFromHeaders({ "x-ratelimit-reset": "soon" }), undefined);
 });
 
+const nowMs = Date.parse("2026-11-12T10:00:00.000Z");
+
+for (const [unit, toEpoch] of [["seconds", (ms) => ms / 1000], ["milliseconds", (ms) => ms]]) {
+  test(`elapsed epoch ${unit} yield to a later reset header`, (t) => {
+    t.mock.method(Date, "now", () => nowMs);
+    assert.equal(cooldownMsFromHeaders({
+      "x-ratelimit-reset": String(toEpoch(nowMs - 1000)),
+      "x-ratelimit-reset-requests": "30",
+    }), 30000);
+  });
+
+  test(`elapsed or current epoch ${unit} yield to the configured cooldown`, (t) => {
+    t.mock.method(Date, "now", () => nowMs);
+    for (const resetMs of [nowMs - 1000, nowMs]) {
+      const headers = { "x-ratelimit-reset": String(toEpoch(resetMs)) };
+      assert.equal(cooldownMsFromHeaders(headers), undefined);
+      assert.equal(cooldownMsFor(3600000, 429, headers), 3600000);
+    }
+  });
+}
+
+test("valid epoch and relative resets still work, with Retry-After taking precedence", (t) => {
+  t.mock.method(Date, "now", () => nowMs);
+  const resetMs = nowMs + 45000;
+  for (const reset of [String(resetMs / 1000), String(resetMs)]) {
+    assert.equal(cooldownMsFromHeaders({ "x-ratelimit-reset": reset }), 45000);
+  }
+  assert.equal(cooldownMsFromHeaders({ "x-ratelimit-reset": "1.2345" }), 1235);
+  const headers = { "x-ratelimit-reset": String(resetMs) };
+  assert.equal(cooldownMsFromHeaders({ ...headers, "Retry-After": "20" }), 20000);
+  assert.equal(cooldownMsFromHeaders({ ...headers, "Retry-After": new Date(nowMs + 10000).toUTCString() }), 10000);
+});
+
 test("remaining labels stay readable for the status command", () => {
   const now = Date.parse("2026-11-12T10:00:00.000Z");
   assert.equal(remainingLabel("2026-11-12T10:09:00.000Z", now), "9m left");

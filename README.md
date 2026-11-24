@@ -117,7 +117,7 @@ When a rule does not set `cooldownMs`, the extension uses these defaults:
 
 A transient entry is not allowed to hide a healthy model for its whole window: once it is older than `recoveryProbeMs` (5 minutes by default, and deliberately shorter than the 10-minute `transientCooldownMs` so the retry can actually happen before the entry expires), the next session retries the source model instead of preselecting the fallback, and a successful turn from that model clears the entry. An interrupted turn (`Esc`) does not count as success, because it proves nothing about the provider. A repeated failure simply persists a fresh entry. Quota entries keep their full cooldown and are never probed, and an explicit rule `cooldownMs` or a `Retry-After`/`x-ratelimit-reset*` header disables early retrying too: those state how long the source must be avoided. Entries written by earlier versions have no transient flag and keep their original behavior; `/model-fallback:clear` drops them without changing the current model.
 
-When the provider response includes `Retry-After` or `x-ratelimit-reset*` headers, those values override `cooldownMs`, `transientCooldownMs`, and the defaults for the persisted fallback window.
+Usable `Retry-After` or `x-ratelimit-reset*` headers override `cooldownMs`, `transientCooldownMs`, and the defaults for the persisted fallback window. An elapsed reset timestamp is skipped, so a later valid reset header or the local cooldown can still apply.
 
 ## State and paths
 
