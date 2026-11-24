@@ -54,9 +54,10 @@ function parseResetHeader(value: string | undefined): number | undefined {
   const trimmed = value.trim();
   const numeric = Number(trimmed);
   if (Number.isFinite(numeric) && numeric > 0) {
-    if (numeric > 1_000_000_000_000) return Math.max(0, numeric - Date.now());
-    if (numeric > 1_000_000_000) return Math.max(0, numeric * 1000 - Date.now());
-    return Math.ceil(numeric * 1000);
+    if (numeric <= 1_000_000_000) return Math.ceil(numeric * 1000);
+    const resetMs = numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
+    const remainingMs = resetMs - Date.now();
+    return remainingMs > 0 ? remainingMs : undefined;
   }
   const dateMs = Date.parse(trimmed);
   if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();

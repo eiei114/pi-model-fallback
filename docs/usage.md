@@ -30,7 +30,7 @@ Cooldown defaults when a rule omits `cooldownMs`:
 
 A transient cooldown heals itself. Once a transient entry is older than `recoveryProbeMs` (5 minutes by default, shorter than the 10-minute transient cooldown so the retry happens before the entry expires), the next session retries the source model instead of preselecting the fallback, and a successful turn clears the entry; an interrupted turn does not count, and a repeated failure persists a fresh one. Quota entries keep their full cooldown and are never retried early, and neither is a transient entry whose window came from an explicit rule `cooldownMs` or a `Retry-After`/`x-ratelimit-reset*` header. `/model-fallback:clear <provider/model>` drops a single entry without changing the active model, which is the escape hatch for entries written by earlier versions (they carry no transient flag and keep their original cooldown).
 
-`Retry-After` and `x-ratelimit-reset*` response headers override `cooldownMs`, `transientCooldownMs`, and those defaults.
+Usable `Retry-After` and `x-ratelimit-reset*` response headers override `cooldownMs`, `transientCooldownMs`, and those defaults. Elapsed reset timestamps are ignored.
 
 If `autoRetry` is disabled, the existing run is not automatically continued.
 
