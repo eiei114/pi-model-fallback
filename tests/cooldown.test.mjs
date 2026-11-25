@@ -41,6 +41,31 @@ test("header parsing ignores unusable values", () => {
 
 const nowMs = Date.parse("2026-11-12T10:00:00.000Z");
 
+test("an unrepresentable Retry-After yields to a valid reset or local cooldown", (t) => {
+  t.mock.method(Date, "now", () => nowMs);
+  // The first delay fits in Date on its own but not when added to now.
+  // The second overflows when converted from seconds to milliseconds.
+  for (const retryAfter of ["8640000000000", "1e308"]) {
+    const headers = { "Retry-After": retryAfter };
+    const withReset = { ...headers, "x-ratelimit-reset": "30" };
+    assert.equal(cooldownMsFor(3600000, 429, withReset), 30000);
+    assert.equal(cooldownMsFromHeaders(headers), undefined);
+    assert.equal(cooldownMsFor(3600000, 429, headers), 3600000);
+    assert.equal(cooldownMsFor(undefined, 429, headers), DEFAULT_429_COOLDOWN_MS);
+    assert.equal(cooldownMsFor(3600000, 429, { ...withReset, "Retry-After": "20" }), 20000);
+  }
+});
+
+test("the exact Date limit is usable, but a reset one millisecond beyond it is skipped", (t) => {
+  t.mock.method(Date, "now", () => nowMs);
+  const maxDateMs = 8_640_000_000_000_000;
+  const headers = { "x-ratelimit-reset-requests": "30" };
+  const delay = cooldownMsFromHeaders({ ...headers, "x-ratelimit-reset": String(maxDateMs) });
+  assert.equal(delay, maxDateMs - nowMs);
+  assert.equal(new Date(nowMs + delay).toISOString(), "+275760-09-13T00:00:00.000Z");
+  assert.equal(cooldownMsFromHeaders({ ...headers, "x-ratelimit-reset": String(maxDateMs + 1) }), 30000);
+});
+
 for (const [unit, toEpoch] of [["seconds", (ms) => ms / 1000], ["milliseconds", (ms) => ms]]) {
   test(`elapsed epoch ${unit} yield to a later reset header`, (t) => {
     t.mock.method(Date, "now", () => nowMs);

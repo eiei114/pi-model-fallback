@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Ignore provider cooldown headers that cannot produce a valid expiry so fallback can use another header or the local cooldown.
 - Ignore elapsed rate-limit reset timestamps in epoch seconds or milliseconds so a later valid header or the local cooldown can take effect.
 
 ## [0.6.2] - 2026-11-13
