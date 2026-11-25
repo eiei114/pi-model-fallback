@@ -30,6 +30,24 @@ test("config validation defaults autoRetry to true and preserves explicit false"
   assert.equal(validateConfigShape({ version: 1, enabled: true, autoRetry: false, rules: [{ matchProviders: ["zai"], fallback }] }).autoRetry, false);
 });
 
+test("config validation leaves recoveryProbeMs unset when omitted and preserves non-negative integers", () => {
+  const input = { version: 1, enabled: true, rules: [{ matchProviders: ["zai"], fallback }] };
+  assert.equal(Object.hasOwn(validateConfigShape(input), "recoveryProbeMs"), false);
+  assert.equal(validateConfigShape({ ...input, recoveryProbeMs: 0 }).recoveryProbeMs, 0);
+  assert.equal(validateConfigShape({ ...input, recoveryProbeMs: 2500 }).recoveryProbeMs, 2500);
+});
+
+test("config validation rejects invalid recoveryProbeMs values with a field-specific error", () => {
+  const input = { version: 1, enabled: true, rules: [{ matchProviders: ["zai"], fallback }] };
+  for (const recoveryProbeMs of [-1, 1.5, "2500"]) {
+    assert.throws(
+      () => validateConfigShape({ ...input, recoveryProbeMs }),
+      { message: "recoveryProbeMs must be a non-negative integer." },
+      `recoveryProbeMs=${JSON.stringify(recoveryProbeMs)}`,
+    );
+  }
+});
+
 test("config validation requires matchProviders or matchModels", () => {
   assert.throws(
     () => validateConfigShape({ version: 1, enabled: true, rules: [{ fallback }] }),
