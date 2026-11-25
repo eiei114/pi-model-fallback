@@ -194,14 +194,15 @@ export default function modelFallback(pi: ExtensionAPI) {
     if (visitedFallbackKeys.has(fallbackKey) || isCancelled()) return false;
 
     const now = new Date();
-    const until = new Date(now.getTime() + cooldownMsFor(match.rule.cooldownMs, status, headers, {
+    const nowMs = now.getTime();
+    const until = new Date(nowMs + cooldownMsFor(match.rule.cooldownMs, status, headers, {
       transient,
       transientCooldownMs: loaded.transientCooldownMs,
-    })).toISOString();
+    }, nowMs)).toISOString();
     // Only an auto-classified transient cooldown may be re-probed later. An
     // explicit rule cooldown or a server-supplied reset window states how long
     // the source must be avoided, so it is honored verbatim.
-    const probe = transient && match.rule.cooldownMs === undefined && cooldownMsFromHeaders(headers) === undefined;
+    const probe = transient && match.rule.cooldownMs === undefined && cooldownMsFromHeaders(headers, nowMs) === undefined;
 
     const prevOriginal = originalModelKey;
     const prevActive = activeFallbackKey;

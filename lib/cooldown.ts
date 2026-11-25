@@ -17,8 +17,9 @@ export function cooldownMsFor(
   status: number,
   headers: Record<string, string>,
   options: CooldownOptions = {},
+  nowMs = Date.now(),
 ): number {
-  const headerMs = cooldownMsFromHeaders(headers);
+  const headerMs = cooldownMsFromHeaders(headers, nowMs);
   if (headerMs !== undefined) return headerMs;
   if (ruleCooldownMs !== undefined) return ruleCooldownMs;
   if (status === 429 || status === 529) {
@@ -27,40 +28,45 @@ export function cooldownMsFor(
   return DEFAULT_5XX_COOLDOWN_MS;
 }
 
-export function cooldownMsFromHeaders(headers: Record<string, string>): number | undefined {
+export function cooldownMsFromHeaders(headers: Record<string, string>, nowMs = Date.now()): number | undefined {
   const normalized = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
-  const retryAfter = parseRetryAfter(normalized["retry-after"]);
-  if (retryAfter !== undefined) return retryAfter;
+  const retryAfter = parseRetryAfter(normalized["retry-after"], nowMs);
+  if (canSerializeExpiry(retryAfter, nowMs)) return retryAfter;
 
   for (const name of ["x-ratelimit-reset", "x-ratelimit-reset-requests", "x-ratelimit-reset-tokens", "ratelimit-reset", "x-rate-limit-reset"]) {
-    const parsed = parseResetHeader(normalized[name]);
-    if (parsed !== undefined) return parsed;
+    const parsed = parseResetHeader(normalized[name], nowMs);
+    if (canSerializeExpiry(parsed, nowMs)) return parsed;
   }
   return undefined;
 }
 
-function parseRetryAfter(value: string | undefined): number | undefined {
+// Check the same absolute timestamp that the extension will serialize.
+function canSerializeExpiry(delayMs: number | undefined, nowMs: number): delayMs is number {
+  return delayMs !== undefined && Number.isFinite(new Date(nowMs + delayMs).getTime());
+}
+
+function parseRetryAfter(value: string | undefined, nowMs: number): number | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
   const seconds = Number(trimmed);
   if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds * 1000);
   const dateMs = Date.parse(trimmed);
-  if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();
+  if (dateMs > nowMs) return dateMs - nowMs;
   return undefined;
 }
 
-function parseResetHeader(value: string | undefined): number | undefined {
+function parseResetHeader(value: string | undefined, nowMs: number): number | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
   const numeric = Number(trimmed);
   if (Number.isFinite(numeric) && numeric > 0) {
     if (numeric <= 1_000_000_000) return Math.ceil(numeric * 1000);
     const resetMs = numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
-    const remainingMs = resetMs - Date.now();
+    const remainingMs = resetMs - nowMs;
     return remainingMs > 0 ? remainingMs : undefined;
   }
   const dateMs = Date.parse(trimmed);
-  if (!Number.isNaN(dateMs) && dateMs > Date.now()) return dateMs - Date.now();
+  if (dateMs > nowMs) return dateMs - nowMs;
   return undefined;
 }
 
